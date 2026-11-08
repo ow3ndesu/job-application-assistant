@@ -1,10 +1,10 @@
 # Development Progress
 
 ## Current pointer
-T09 — Human-approved application assistance
+T10 — Profile improvement proposals
 
 ## Overall status
-IN PROGRESS — T00–T08 complete. You can scan pages, filter by keywords, check AI fit, and draft evidence-checked applications to edit, copy or download. (`master` holds T01–T07; T08 is on `feat/t08-application-drafts`.)
+IN PROGRESS — T00–T09 complete. You can scan pages, filter by keywords, check AI fit, draft evidence-checked applications, approve them, apply on the site yourself, and track the outcome. (`master` holds T01–T07; T08 is on `feat/t08-application-drafts`; T09 is on `feat/t09-application-assistance`.)
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
@@ -16,14 +16,35 @@ IN PROGRESS — T00–T08 complete. You can scan pages, filter by keywords, chec
 - T06 — Search orchestration and results UI (2026-11-08)
 - T07 — Job matching and explanation (2026-11-08)
 - T08 — Application draft generation (2026-11-08)
+- T09 — Human-approved application assistance (2026-11-08)
 
 ## Current task notes
-- **T09 under the read-only decision (Q1, option a):** on OnlineJobs.ph the extension never fills or submits forms. CLAUDE.md T09 itself requires "a manual workflow when automation is unavailable or disallowed", so for OnlineJobs.ph T09 reduces to:
-  - a review/approval step for a draft ("Ready to use" / approved)
-  - the manual copy/apply workflow (opening the job post to apply yourself)
-  - a self-reported status ("I applied" → `submitted` is never claimed by the extension; it would be "you marked as applied")
-  - Form filling would only ever apply to sites whose automation rules allow it, and none are supported yet.
-  - Scope confirmed by the user ("let's proceed", 2026-11-08).
+- T10 not started. Building blocks:
+  - The profile repo already keeps versions and supports restore (T02/T03).
+  - T07/T08 already collect `unsupportedClaims` / `removedStatements`. These are candidates to *ask the user about*, never facts to add.
+  - Proposals must be diffs the user accepts, rejects or edits, with source notes. Nothing is written without approval (CLAUDE.md T10).
+- T09 result (scope confirmed by the user, 2026-11-08). Read-only on OnlineJobs.ph means no form filling or submission; T09 is the human-approved manual workflow:
+  - **`src/drafting/workflow.ts`** (pure, tested). States:
+    - `needs_review`/`draft` → **approve** → `approved` → **user reports submitted** → `submitted`
+    - plus withdraw (back to review), undo submitted (back to approved), couldn't apply (`failed` + note), reopen
+  - **Approval** (the first confirmation):
+    - requires a "reviewed" acknowledgement, plus explicit "leave N unanswered" when answers are blank (including sensitive ones)
+    - records `approvedAt` and `approvedContentHash` (FNV-1a over the message and Q&A)
+    - `isApprovalCurrent` checks the text is unchanged; any edit saved via `applyDraftEdits` revokes the approval
+  - **Submission** (the separate final confirmation):
+    - a two-step "I submitted this on the site" → "Yes, I submitted it myself"
+    - requires a current approval; records `submittedAt` and `submissionReportedBy: 'user'`
+    - shown as **"Applied: reported by you, unconfirmed"** with an explanation that the extension can't see the site; the extension never claims success
+    - a submitted draft is read-only
+  - **Per-site policy:** `SiteAdapter.formAssistance { allowed, reason }`. OnlineJobs.ph is `allowed: false` (ToS §7.4 + the user's read-only decision), and a test asserts no supported site allows form filling. No form-filling code exists.
+  - `ApplicationDraft` gained optional `approvedAt`, `approvedContentHash`, `submittedAt`, `submissionReportedBy`, `outcomeNote`. They're optional, so no migration was needed.
+  - **UI** (Saved jobs → Details → Application draft → **Apply**):
+    - status badge; the site's form-help policy text
+    - checklist + "Mark ready to use"
+    - manual steps + "Copy all" + "Open job post to apply" (new tab)
+    - "I submitted this on the site" (two-step confirm), "Withdraw approval", "Undo: I didn't submit it", "Couldn't apply?" with a note, "Reopen draft"
+    - a warning when an unsaved edit would withdraw the approval
+    - job rows show an application-status badge; new **Application** filter (any / no draft / draft / ready / applied / couldn't apply)
 - T08 result:
   - **Question source:** you paste the application form's questions (one per line). The OnlineJobs.ph apply form needs a login and was not inspected, so no form fields are guessed. Instructions found in the job post (e.g. a required first word) are extracted by the AI as `postInstructions`, shown with a caution, and never applied automatically.
   - `src/drafting/`:
@@ -314,9 +335,27 @@ IN PROGRESS — T00–T08 complete. You can scan pages, filter by keywords, chec
   - Test added; `pnpm check` 242 passed; `e2e-t07b` 14/14.
 
 ## Last completed task
-- T08 — Application draft generation (2026-11-08)
+- T09 — Human-approved application assistance (2026-11-08)
 
-## Last validation — T08 (2026-11-08)
+## Last validation — T09 (2026-11-08)
+- `pnpm check` exit 0. Vitest: 257 tests passed, 5 skipped (live).
+  - New workflow tests:
+    - review ack required; leave-blank ack required; an empty message can't be approved
+    - approval fingerprints the text; an edit revokes it; a tampered text is not current
+    - submit requires approval and is user-reported; a submitted draft can't be edited; undo works
+    - withdraw; couldn't apply with a note, then reopen; couldn't apply is blocked while submitted
+    - OnlineJobs.ph `formAssistance.allowed === false`, and no supported site allows it
+- Headless Chrome 157 end-to-end (`e2e-t09`, release build; www.onlinejobs.ph mapped to 0.0.0.0 via `--host-resolver-rules`, so **no live traffic**; no AI calls): **17/17 passed**.
+  - Policy text shown.
+  - Approval refused without the review ack, then without the leave-blank ack, then approved with a fingerprint.
+  - "Open job post to apply" opened the correct URL in a new tab.
+  - An unsaved edit warned; saving revoked the approval.
+  - "I submitted" needed a second click: the first changed nothing, the second recorded it as user-reported and showed "unconfirmed"; the submitted draft became read-only.
+  - Undo, withdraw, couldn't apply (with note) and reopen all worked.
+  - Row badge and "No draft yet" filter correct; 0 console errors.
+- Regressions on the release build: T03 33/33, T04 7/7, T07 18/18, T07b 14/14, T08 16/16. T06 19/19 on the E2E build. Release manifest: `storage`, `activeTab`, `scripting`; no host permissions.
+
+## Validation — T08 (2026-11-08)
 - `pnpm check` exit 0. Vitest: 17 files passed + 2 skipped (live); 238 tests passed, 5 skipped.
   - Sensitive classifier: 13 sensitive phrasings across all 7 categories caught; 5 normal questions not flagged.
   - `looksFactual` heuristic.

@@ -555,3 +555,33 @@ button.link-button {
 .draft-answers p {
   margin: 4px 0;
 }
+
+/* Apply panel */
+.apply-panel {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.apply-panel h3 {
+  margin-top: 0;
+}
+
+.approve-step label.toggle,
+.apply-panel label.toggle {
+  font-size: 0.85rem;
+  margin: 6px 0;
+}
+
+.manual-steps {
+  padding-left: 18px;
+}
+
+.could-not-apply {
+  margin-top: 10px;
+}
+
+.badge + .badge {
+  margin-left: 6px;
+}

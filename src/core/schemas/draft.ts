@@ -74,6 +74,19 @@ export const ApplicationDraftSchema = z.object({
   model: z.string().min(1).max(100),
   createdAt: IsoDateTimeSchema,
   updatedAt: IsoDateTimeSchema,
+  /** When the user marked the draft ready to use (status `approved`). */
+  approvedAt: IsoDateTimeSchema.optional(),
+  /** Fingerprint of the exact text that was approved; any edit invalidates approval. */
+  approvedContentHash: z.string().min(1).max(64).optional(),
+  /**
+   * Set when the user reports they submitted the application on the site
+   * (status `submitted`). The extension cannot see the site, so this is
+   * always user-reported and shown as unconfirmed.
+   */
+  submittedAt: IsoDateTimeSchema.optional(),
+  submissionReportedBy: z.literal('user').optional(),
+  /** Optional note when the user marks that they could not apply (status `failed`). */
+  outcomeNote: z.string().trim().max(500).optional(),
 });
 
 export type ApplicationDraft = z.infer<typeof ApplicationDraftSchema>;

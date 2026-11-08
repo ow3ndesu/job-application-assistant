@@ -43,6 +43,12 @@ export interface SiteAdapter {
   extract(page: PageSnapshot): Promise<ExtractionResult>;
   /** Search page URL the user can open themselves (never fetched by the extension). */
   searchUrl?(keyword: string): URL;
+  /**
+   * Whether the extension may fill in (never submit) application forms on this
+   * site, even after user approval. Decided per site from its terms and the
+   * user's decision. When false, only the manual copy/apply workflow exists.
+   */
+  readonly formAssistance: { allowed: boolean; reason: string };
 }
 
 export const EXTRACTION_STATUS_TEXT: Record<ExtractionResult['status'], string> = {

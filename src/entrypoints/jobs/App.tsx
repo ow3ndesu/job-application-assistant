@@ -15,6 +15,7 @@ import { repos } from '@/ui/services';
 import { useResource } from '@/ui/useResource';
 import { DraftPanel } from './DraftPanel';
 import { MatchPanel } from './MatchPanel';
+import { APPLICATION_STATUS_LABEL } from '@/drafting/workflow';
 
 const loadAll = async () => {
   const [jobs, scans, keywords, sites, matches, profile, drafts] = await Promise.all([
@@ -129,6 +130,8 @@ function JobList(props: {
   const [type, setType] = useState('');
   const [source, setSource] = useState('');
   const [matchingOnly, setMatchingOnly] = useState(false);
+  /** '' = any, 'none' = no draft yet, otherwise a draft status. */
+  const [application, setApplication] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const types = useMemo(
@@ -147,8 +150,15 @@ function JobList(props: {
       .filter((j) => !source || j.source === source)
       .filter((j) => !q || jobSearchText(j).toLowerCase().includes(q))
       .filter((j) => !matchingOnly || applyKeywordFunnel(j, props.keywords).passes)
+      .filter((j) => {
+        if (!application) return true;
+        const status = props.drafts.get(j.id)?.status;
+        if (application === 'none') return status === undefined;
+        if (application === 'draft') return status === 'draft' || status === 'needs_review';
+        return status === application;
+      })
       .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
-  }, [props.jobs, props.keywords, query, type, source, matchingOnly]);
+  }, [props.jobs, props.keywords, props.drafts, query, type, source, matchingOnly, application]);
 
   return (
     <Section
@@ -205,6 +215,21 @@ function JobList(props: {
             </select>
           </label>
         )}
+        <label>
+          Application
+          <select
+            name="application-status"
+            value={application}
+            onChange={(e) => setApplication(e.target.value)}
+          >
+            <option value="">Any</option>
+            <option value="none">No draft yet</option>
+            <option value="draft">Draft</option>
+            <option value="approved">{APPLICATION_STATUS_LABEL.approved}</option>
+            <option value="submitted">Applied (reported by you)</option>
+            <option value="failed">{APPLICATION_STATUS_LABEL.failed}</option>
+          </select>
+        </label>
         <label className="toggle">
           <input
             type="checkbox"
@@ -280,10 +305,22 @@ function JobRow(props: {
           {job.postedAt ? ` · posted ${job.postedAt}` : ''}
           {` · first seen ${fmt(job.firstSeenAt)}`}
         </p>
-        {props.match && (
-          <p className="small" data-testid="fit-badge">
-            <span className="badge">Estimated fit {props.match.score}/100</span>
-            {props.match.injectionSuspected && <span className="badge err"> Suspicious post</span>}
+        {(props.match || props.draft) && (
+          <p className="small">
+            {props.match && (
+              <span className="badge" data-testid="fit-badge">
+                Estimated fit {props.match.score}/100
+              </span>
+            )}
+            {props.match?.injectionSuspected && <span className="badge err"> Suspicious post</span>}
+            {props.draft && (
+              <span
+                className={`badge ${props.draft.status === 'approved' ? 'ok' : props.draft.status === 'failed' ? 'err' : ''}`}
+                data-testid="application-badge"
+              >
+                {APPLICATION_STATUS_LABEL[props.draft.status]}
+              </span>
+            )}
           </p>
         )}
         {(current.matchedInclude.length > 0 || current.matchedExclude.length > 0) && (

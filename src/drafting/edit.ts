@@ -11,12 +11,15 @@ export interface DraftEdits {
  * Applies user edits. Any changed answer becomes the user's own
  * (`user_written`); a cleared answer returns to needing an answer. Sensitive
  * answers keep their category so the warning stays visible.
+ * Approval covers exact text: any change to an approved draft revokes it.
+ * A draft the user reported as submitted is not edited.
  */
 export function applyDraftEdits(
   draft: ApplicationDraft,
   edits: DraftEdits,
   now: Date,
 ): ApplicationDraft {
+  if (draft.status === 'submitted') return draft;
   let changed = false;
   const coverLetter = edits.coverLetter ?? draft.coverLetter;
   if (coverLetter !== draft.coverLetter) changed = true;
@@ -39,8 +42,12 @@ export function applyDraftEdits(
 
   if (!changed) return draft;
   const needsReview = answers.some((a) => !a.answer.trim()) || !coverLetter.trim();
+  const base = { ...draft };
+  delete base.approvedAt;
+  delete base.approvedContentHash;
+  delete base.outcomeNote;
   return {
-    ...draft,
+    ...base,
     coverLetter,
     answers,
     editedByUser: true,

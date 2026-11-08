@@ -211,6 +211,14 @@ export const onlineJobsAdapter: SiteAdapter = {
   id: ONLINEJOBS_ADAPTER_ID,
   label: 'OnlineJobs.ph',
 
+  // ToS §7.4 requires personal use "without the use of any automated means";
+  // the user chose read-only use (Q1 = a, 2026-11-08).
+  formAssistance: {
+    allowed: false,
+    reason:
+      "OnlineJobs.ph's terms don't allow automated use, so the extension never fills in or submits forms there. Copy your draft and apply on the site yourself.",
+  },
+
   canHandle(url) {
     return url.protocol === 'https:' && (OLJ.hosts as readonly string[]).includes(url.hostname);
   },

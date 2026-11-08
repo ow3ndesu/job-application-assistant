@@ -5,6 +5,7 @@ import { classifySensitive, SENSITIVE_LABEL } from '@/drafting/sensitive';
 import { sendToBackground } from '@/ui/background-client';
 import { ConfirmButton, describeError, ErrorNotice } from '@/ui/components';
 import { repos } from '@/ui/services';
+import { ApplyPanel } from './ApplyPanel';
 
 const fmt = (iso: string) => new Date(iso).toLocaleString();
 
@@ -52,6 +53,8 @@ export function DraftPanel(props: {
   const dirty =
     draft !== undefined &&
     (coverLetter !== draft.coverLetter || answers.some((a, i) => a !== draft.answers[i]?.answer));
+  /** A draft the user reported as submitted is read-only. */
+  const locked = draft?.status === 'submitted';
 
   async function generate(replaceEdited = false) {
     setBusy(true);
@@ -102,6 +105,17 @@ export function DraftPanel(props: {
     } catch {
       setError('Could not copy. Select the text and copy it manually.');
     }
+  }
+
+  /** Copies the current text (including unsaved edits) as plain text. */
+  function copyAll() {
+    if (!draft) return;
+    const current = applyDraftEdits(
+      draft,
+      { coverLetter, answers: Object.fromEntries(answers.map((a, i) => [i, a])) },
+      new Date(),
+    );
+    void copy(draftToText(current, job), 'Draft');
   }
 
   function download() {
@@ -207,6 +221,7 @@ export function DraftPanel(props: {
             <textarea
               name="draft-cover-letter"
               rows={10}
+              readOnly={locked}
               value={coverLetter}
               onChange={(e) => setCoverLetter(e.target.value)}
             />
@@ -260,6 +275,7 @@ export function DraftPanel(props: {
                     <textarea
                       name={`draft-answer-${i}`}
                       rows={3}
+                      readOnly={locked}
                       value={answers[i] ?? ''}
                       placeholder={
                         a.status === 'sensitive'
@@ -286,29 +302,26 @@ export function DraftPanel(props: {
             </ol>
           )}
 
+          {draft.status === 'approved' && dirty && (
+            <p className="message info small" data-testid="approval-will-reset">
+              Saving these changes withdraws your approval. You&apos;ll review it again.
+            </p>
+          )}
           <div className="button-row">
-            <button type="button" className="primary" disabled={!dirty} onClick={() => void save()}>
-              Save changes
-            </button>
+            {!locked && (
+              <button
+                type="button"
+                className="primary"
+                disabled={!dirty}
+                onClick={() => void save()}
+              >
+                Save changes
+              </button>
+            )}
             <button type="button" onClick={() => void copy(coverLetter, 'Message')}>
               Copy message
             </button>
-            <button
-              type="button"
-              onClick={() =>
-                void copy(
-                  draftToText(
-                    applyDraftEdits(
-                      draft,
-                      { coverLetter, answers: Object.fromEntries(answers.map((a, i) => [i, a])) },
-                      new Date(),
-                    ),
-                    job,
-                  ),
-                  'Draft',
-                )
-              }
-            >
+            <button type="button" onClick={copyAll}>
               Copy all
             </button>
             <button type="button" onClick={download}>
@@ -323,6 +336,13 @@ export function DraftPanel(props: {
               {notice}
             </p>
           )}
+          <ApplyPanel
+            job={job}
+            draft={draft}
+            dirty={dirty}
+            onCopyAll={copyAll}
+            onChanged={props.onChanged}
+          />
         </div>
       )}
     </div>
