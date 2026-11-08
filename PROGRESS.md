@@ -1,17 +1,38 @@
 # Development Progress
 
 ## Current pointer
-T02 — Domain models, schemas, and storage
+T03 — Settings and profile management UI
 
 ## Overall status
-IN PROGRESS — T00 and T01 complete. The extension shell builds and loads; there are no features yet.
+IN PROGRESS — T00–T02 complete. Validated data layer exists; no user-facing features yet.
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
 - T01 — Bootstrap extension shell (2026-11-08)
+- T02 — Domain models, schemas, and storage (2026-11-08)
 
 ## Current task notes
-- T02 not started.
+- T03 not started.
+  - UI must use `getRepositories()` from `@/storage`. ESLint blocks `browser.storage`, `chrome.storage`, `localStorage`, `sessionStorage` and `indexedDB` outside `src/storage/`.
+  - The API key is not stored yet. T03 or T04 must add it as its own storage key (not inside `settings`) so it can be masked and cleared on its own.
+- T02 result:
+  - Schemas (Zod 4.6.7) live in `src/core/schemas/`: settings, target site, search keywords, applicant profile and profile state (current + history), job posting, job match, application draft. Domain types are inferred from the schemas (`src/core/domain`).
+  - Changes from the CLAUDE.md contracts:
+    - `JobMatch` gained `id`, `profileId`, `profileVersion` and `evaluatedAt`.
+    - `ApplicationDraft` gained `profileId` and `profileVersion`.
+    - Optional job fields reject empty strings, so a missing field stays absent instead of becoming a blank value.
+  - Storage in `src/storage/`:
+    - A `KeyValueStore` interface, with an in-memory implementation and a `browser.storage.local` adapter.
+    - Each stored value is wrapped in a versioned envelope `{ schemaVersion, data }`, with step-wise `migrations[n]` (n→n+1) and write-back after migrating.
+    - Data with a newer schema version than the app supports raises `unsupported_version` and is never overwritten.
+    - A typed `StorageError`: `corrupt`, `unsupported_version`, `migration_failed`, `invalid_input`, `not_found`, `io`. Messages never include stored values.
+    - Recovery: `recover()` moves the raw value to a `quarantine:<key>:<ts>` key, then the item reverts to defaults.
+    - Collections validate each record separately. Invalid records are reported, kept through unrelated writes, and removed only via `discardInvalid()`, which quarantines them first.
+    - Profile history: each content change creates a new version and the previous one is kept (cap 20). `restore(v)` re-saves an old version as the newest one, so nothing is lost.
+    - First run seeds and persists the OnlineJobs.ph default site. Removing it does not bring it back.
+  - Manifest now requests `permissions: ["storage"]`. Chrome shows no install warning for it.
+  - Known limitation: the write lock only covers one JS context (popup, options page or background worker on its own). Simultaneous writes from the popup and the background could race; route writes through the background in T06 if that becomes real.
+  - Dependency added: `zod` (runtime validation, named in the CLAUDE.md stack).
 - T01 result:
   - Scaffolded with `pnpm dlx wxt@0.21.5 init wxt-scaffold -t react --pm pnpm --no-git` in a scratch dir, then merged by hand.
   - Template demo files dropped: the sample content script (which matched `*://*.google.com/*`), `react.svg`/`wxt.svg` and the demo CSS.
@@ -109,9 +130,25 @@ IN PROGRESS — T00 and T01 complete. The extension shell builds and loads; ther
 - Note: `corepack enable` needs admin rights here. The dev guide (T01) should document `npm install -g pnpm` as the fallback.
 
 ## Last completed task
-- T01 — Bootstrap extension shell (2026-11-08)
+- T02 — Domain models, schemas, and storage (2026-11-08)
 
-## Last validation — T01 (2026-11-08)
+## Last validation — T02 (2026-11-08)
+- `pnpm check` exit 0. Vitest: 6 files, 57 tests passed. Coverage:
+  - schema accept/reject cases
+  - CRUD for settings, sites, keywords, profile and jobs
+  - corrupt envelopes and corrupt records
+  - error messages do not leak stored values
+  - migrations (success, missing, throwing)
+  - newer-version protection
+  - quarantine/recover, IO failure wrapping
+  - serialized concurrent updates
+  - persistence across fresh repository instances via WXT `fakeBrowser`
+- ESLint isolation rule checked: `browser.storage` and `localStorage` in `src/entrypoints/popup/*` → 2 errors; the same code in `src/storage/` → clean.
+- Real browser-restart persistence (headless Chrome 157, persistent temp profile, extension loaded via CDP): wrote a `settings` envelope from `options.html`, closed Chrome completely, relaunched and read back the same value; the extension id was unchanged.
+  - This checks the platform's persistence for this extension. Repository behaviour on top of `storage.local` is covered by the `fakeBrowser` tests.
+- Popup and options still render with 0 console errors (smoke re-run). Built manifest `permissions: ["storage"]`.
+
+## Validation — T01 (2026-11-08)
 - Repo: `pnpm typecheck` exit 0; `pnpm lint` exit 0; `pnpm format:check` exit 0; `pnpm test` exit 0 (1 file, 1 test passed); `pnpm build` exit 0 (`.output/chrome-mv3`, about 232 kB).
 - Clean copy (tracked and unignored files only, copied to the scratchpad): `pnpm install --frozen-lockfile` succeeded, then `pnpm check` exit 0.
 - Built `manifest.json`: `manifest_version: 3`, `permissions: []`, `background.service_worker`, `action.default_popup: popup.html`, `options_ui.page: options.html`.
