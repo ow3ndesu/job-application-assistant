@@ -44,3 +44,5 @@ next-env.d.ts
 /.clerk/
 
 /generated/prisma
+
+/graphify-out
