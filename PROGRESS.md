@@ -1,20 +1,41 @@
 # Development Progress
 
 ## Current pointer
-T03 — Settings and profile management UI
+T04 — AI provider abstraction and Claude integration
 
 ## Overall status
-IN PROGRESS — T00–T02 complete. Validated data layer exists; no user-facing features yet.
+IN PROGRESS — T00–T03 complete. The settings and profile UI work; there are no AI or job features yet.
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
 - T01 — Bootstrap extension shell (2026-11-08)
 - T02 — Domain models, schemas, and storage (2026-11-08)
+- T03 — Settings and profile management UI (2026-11-08)
 
 ## Current task notes
-- T03 not started.
-  - UI must use `getRepositories()` from `@/storage`. ESLint blocks `browser.storage`, `chrome.storage`, `localStorage`, `sessionStorage` and `indexedDB` outside `src/storage/`.
-  - The API key is not stored yet. T03 or T04 must add it as its own storage key (not inside `settings`) so it can be masked and cleared on its own.
+- T04 not started. Inputs T04 should build on:
+  - Read the key only in the background, via `repos.secrets.getAnthropicApiKeyForProvider()`.
+  - The model id comes from `settings.ai.model`, defaulting to `DEFAULT_ANTHROPIC_MODEL` (`claude-sonnet-5-5`). The selectable list is `ANTHROPIC_MODEL_OPTIONS` in `src/core/schemas/models.ts`, taken from the official models page on 2026-11-08; check it against `GET /v1/models`.
+  - The UI says "The key is not checked with Anthropic yet". Replace that once validation exists.
+  - Still to verify in the docs: whether calls from the extension's background worker need a CORS opt-in header, and which host permission (`https://api.anthropic.com/*`) is needed.
+- T03 result:
+  - Options page sections (`src/entrypoints/options/sections/`):
+    - **Profile:** edit, save as a new version, import .md/.txt (fills the editor; you save it yourself), export the saved version as `applicant-profile-vN.md`, view and restore previous versions.
+    - **Job sites:** add, edit, enable/disable, remove. https only; duplicates are detected after URL normalization.
+    - **Keywords and exclusions:** add and remove. Case-insensitive duplicates are rejected, including across the two lists.
+    - **AI provider:** Anthropic plus a model picker; the API key field is a password input.
+    - **Scan limits:** the delay is at least 5 s.
+    - **Your data:** separate controls to delete the profile, delete jobs and matches, delete drafts, reset settings/sites/keywords, remove the key, and delete everything. Each uses a two-step confirm.
+  - The popup shows status: profile version, number of enabled sites, and whether a key is set (yes/no only).
+  - **API key handling:**
+    - Stored under its own `secrets` storage key, separate from `settings` (`SecretsRepository`).
+    - The UI can only check whether a key exists, save one or remove one. The key is never read back into the UI, and the input is cleared after saving.
+    - The disclosure in the UI says: stored unencrypted in the Chrome profile; sent only to `api.anthropic.com`; job details and profile are sent to Anthropic when an AI action runs; no own server; no analytics.
+  - ESLint `no-console: error` across `src/` stops anything (including the key or profile text) from being logged.
+  - Logic in `src/core/use-cases/` (target-sites, keywords, profile-file, api-key) is pure and unit-tested; the UI only wires it to repositories.
+  - Fixes found by the walkthrough:
+    - Success messages are now kept in the parent section, so they survive the form remount after a save.
+    - Forms use `noValidate`, so the app's own validation messages show instead of the browser's bubbles.
 - T02 result:
   - Schemas (Zod 4.6.7) live in `src/core/schemas/`: settings, target site, search keywords, applicant profile and profile state (current + history), job posting, job match, application draft. Domain types are inferred from the schemas (`src/core/domain`).
   - Changes from the CLAUDE.md contracts:
@@ -130,9 +151,25 @@ IN PROGRESS — T00–T02 complete. Validated data layer exists; no user-facing 
 - Note: `corepack enable` needs admin rights here. The dev guide (T01) should document `npm install -g pnpm` as the fallback.
 
 ## Last completed task
-- T02 — Domain models, schemas, and storage (2026-11-08)
+- T03 — Settings and profile management UI (2026-11-08)
 
-## Last validation — T02 (2026-11-08)
+## Last validation — T03 (2026-11-08)
+- `pnpm check` exit 0. Vitest: 8 files, 84 tests passed. New: use-case tests (sites, keywords, profile file, API key input) and secrets/data-management tests.
+- Headless Chrome 157 walkthrough of the built options page: **33/33 checks passed**. The script is a throwaway in the session scratchpad, not committed; T12 adds Playwright E2E. Checks:
+  - Default OnlineJobs.ph site on first run.
+  - Sites: add, disable, edit, remove; non-https URL rejected.
+  - Keywords and exclusions: add, remove.
+  - Profile: save v1, then v2; import .md (BOM stripped, CRLF normalized, not auto-saved); save v3.
+  - Export downloads `applicant-profile-v3.md` with the exact saved content.
+  - API key: input is `type=password`; after saving, the key appears nowhere in the page DOM and the input is cleared; it is stored under `secrets`, not `settings`.
+  - Scan delay under 5 s is rejected; valid limits save.
+  - **Full browser restart:** profile v3 and its 2 previous versions, sites, keywords, key status and scan limits all persisted.
+  - Restore v1 creates v4.
+  - Delete profile, delete jobs/matches, delete drafts, reset settings (keeps the key), delete everything (storage emptied, key gone).
+  - 0 console errors after the restart, and the key never appeared in console output.
+- Popup and options smoke check: 0 console errors or warnings.
+
+## Validation — T02 (2026-11-08)
 - `pnpm check` exit 0. Vitest: 6 files, 57 tests passed. Coverage:
   - schema accept/reject cases
   - CRUD for settings, sites, keywords, profile and jobs

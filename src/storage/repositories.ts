@@ -5,16 +5,19 @@ import {
   defaultSettings,
   defaultTargetSite,
   emptyProfileState,
+  emptySecrets,
   JobMatchSchema,
   JobPostingSchema,
   ProfileStateSchema,
   SearchKeywordsSchema,
+  SecretsSchema,
   SettingsSchema,
   TargetSiteSchema,
 } from '@/core/schemas';
 import { CollectionRepository } from './collection-repository';
 import type { KeyValueStore } from './kv';
 import { ProfileRepository } from './profile-repository';
+import { SecretsRepository } from './secrets-repository';
 import { SingletonRepository } from './singleton-repository';
 
 /** Storage keys owned by this extension. */
@@ -26,6 +29,7 @@ export const STORAGE_KEYS = {
   jobs: 'jobs',
   matches: 'matches',
   drafts: 'drafts',
+  secrets: 'secrets',
 } as const;
 
 export interface RepositoryDeps {
@@ -79,7 +83,15 @@ export function createRepositories(store: KeyValueStore, deps: RepositoryDeps = 
       { key: STORAGE_KEYS.drafts, version: 1, schema: ApplicationDraftSchema },
       clock,
     ),
-    /** Deletes everything this extension stored, including quarantined data. */
+    secrets: new SecretsRepository(
+      new SingletonRepository(
+        store,
+        { key: STORAGE_KEYS.secrets, version: 1, schema: SecretsSchema },
+        emptySecrets,
+        clock,
+      ),
+    ),
+    /** Deletes everything this extension stored, including the API key and quarantined data. */
     clearAll: () => store.clear(),
   };
 }

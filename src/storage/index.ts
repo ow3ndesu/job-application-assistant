@@ -5,6 +5,7 @@ export * from './errors';
 export type { KeyValueStore } from './kv';
 export type { CollectionReadResult, InvalidRecord } from './collection-repository';
 export { createRepositories, STORAGE_KEYS, type Repositories } from './repositories';
+export { createDataManagement, type DataManagement } from './data-management';
 
 let instance: Repositories | undefined;
 
