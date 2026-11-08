@@ -1,23 +1,43 @@
 # Development Progress
 
 ## Current pointer
-T04 — AI provider abstraction and Claude integration
+T05 — Site adapter framework and OnlineJobs.ph discovery
 
 ## Overall status
-IN PROGRESS — T00–T03 complete. The settings and profile UI work; there are no AI or job features yet.
+IN PROGRESS — T00–T04 complete. Settings, profile and the AI provider layer (key test) work; there are no job features yet.
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
 - T01 — Bootstrap extension shell (2026-11-08)
 - T02 — Domain models, schemas, and storage (2026-11-08)
 - T03 — Settings and profile management UI (2026-11-08)
+- T04 — AI provider abstraction and Claude integration (2026-11-08)
 
 ## Current task notes
-- T04 not started. Inputs T04 should build on:
-  - Read the key only in the background, via `repos.secrets.getAnthropicApiKeyForProvider()`.
-  - The model id comes from `settings.ai.model`, defaulting to `DEFAULT_ANTHROPIC_MODEL` (`claude-sonnet-5-5`). The selectable list is `ANTHROPIC_MODEL_OPTIONS` in `src/core/schemas/models.ts`, taken from the official models page on 2026-11-08; check it against `GET /v1/models`.
-  - The UI says "The key is not checked with Anthropic yet". Replace that once validation exists.
-  - Still to verify in the docs: whether calls from the extension's background worker need a CORS opt-in header, and which host permission (`https://api.anthropic.com/*`) is needed.
+- T05 not started. Constraints already decided:
+  - Read-only: extract jobs only from OnlineJobs.ph pages the user has opened. No background fetching or crawling (ToS §7.4).
+  - Content scripts must not trigger AI calls. The background handler already rejects senders that aren't extension pages.
+  - Fixtures must have personal data removed.
+- T04 result:
+  - `src/providers/ai/types.ts`: provider-neutral contract.
+    - `AIProvider` has `validateCredentials()` and `generateStructured<T>()`.
+    - `StructuredRequest` keeps the trusted `system` text separate from untrusted `userContent`.
+    - `AIResult<T>` / `AIError`, with fixed, key-free messages for 14 error kinds.
+  - `src/providers/ai/anthropic/AnthropicProvider.ts`: official `@anthropic-ai/sdk` 1.6.0 (dependency added).
+    - Created with `dangerouslyAllowBrowser: true` because the key is the user's own (BYOK), used only in the background worker. The SDK sends `Authorization: Bearer <key>`, `anthropic-version: 2026-10-21` and `anthropic-dangerous-direct-browser-access: true`.
+    - Structured output: `beta.messages.create` with `output_config.format = betaZodOutputFormat(schema)`. `stop_reason` is checked first (`refusal` → refused, `max_tokens` → truncated); then the text is `JSON.parse`d and validated with our own Zod schema.
+    - Opus 5.5 and Sonnet 5.5 requests opt into server-side refusal fallback (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`). Haiku 5.5 does not support it, so it is not sent.
+    - Timeout 120 s per attempt. `maxRetries: 2`: the SDK retries 408/409/429/5xx and connection errors with backoff and honours `retry-after`. Cancellation via `AbortSignal`.
+    - Key validation is `GET /v1/models/{model}` (no tokens generated).
+  - `src/providers/ai/anthropic/errors.ts`: maps SDK error classes to kinds, most specific first. SDK messages are never copied; only the `request-id` is kept.
+  - `src/providers/ai/index.ts`: `createAIProvider(settings, key)` is the only place that knows the concrete provider.
+  - `src/background/`: Zod-validated message protocol plus a handler.
+    - Only the extension's own pages are accepted (`sender.id` and `sender.url` must match the extension origin). Content scripts, other extensions and unknown senders are rejected.
+    - The key is read in the background and never returned in a response.
+  - Options page: a **Test key** button sends `ai/validate-key` through the background and shows a success or error message.
+  - ESLint `no-restricted-imports` stops `src/ui/**` and `src/entrypoints/**` (except `background.ts`) from importing `@/providers/*` or `@anthropic-ai/*`. The build confirms the SDK is only in `background.js`.
+  - **No host permission is needed.** Probe in headless Chrome: with `permissions: ["storage"]` only, both the options page and the service worker read a cross-origin `401 authentication_error` from `api.anthropic.com` (fake key). The manifest is unchanged and has no install warning.
+  - **Default model changed to `claude-opus-5-5`.** This follows the official Claude API guidance to default to the current Opus unless the user chooses otherwise. Sonnet 5.5 (about half the cost) and Haiku 5.5 can still be chosen in Settings.
 - T03 result:
   - Options page sections (`src/entrypoints/options/sections/`):
     - **Profile:** edit, save as a new version, import .md/.txt (fills the editor; you save it yourself), export the saved version as `applicant-profile-vN.md`, view and restore previous versions.
@@ -151,9 +171,31 @@ IN PROGRESS — T00–T03 complete. The settings and profile UI work; there are 
 - Note: `corepack enable` needs admin rights here. The dev guide (T01) should document `npm install -g pnpm` as the fallback.
 
 ## Last completed task
-- T03 — Settings and profile management UI (2026-11-08)
+- T04 — AI provider abstraction and Claude integration (2026-11-08)
 
-## Last validation — T03 (2026-11-08)
+## Last validation — T04 (2026-11-08)
+- `pnpm check` exit 0. Vitest: 10 files, 113 tests passed. No real API key is used: the real SDK runs against a mocked `fetch`.
+  - Provider tests:
+    - success, plus the documented endpoint, headers and body (`fallbacks`, `output_config.format` json_schema, effort)
+    - no fallback on Haiku
+    - non-JSON and schema-invalid output → `malformed_response`
+    - refusal and truncation
+    - 401/403/404/400/500/529 mapped to the right kinds, with a request id and no key in the message
+    - 429 + `retry-after` gives the wait time
+    - a 529 is retried then succeeds; a 401 is not retried; persistent 429 stops after `maxRetries`
+    - network failure, timeout (50 ms) and `AbortSignal` cancellation
+    - `validateCredentials` sends GET `/v1/models/{id}`, and distinguishes an invalid key from an unknown model
+  - Background handler tests: the key comes from storage and is never in a response; missing key; senders that are a web page, another extension or unknown are rejected; malformed messages are rejected.
+- Headless Chrome 157 end-to-end (`e2e-t04`, scratchpad): **7/7 passed**.
+  - Test key is disabled until a key is saved.
+  - A real request through options page → background worker → Anthropic with a fake key returned a 401, shown as "The API key was rejected."
+  - The key never appeared in the DOM or the console; 0 console errors.
+  - Web pages cannot message the background.
+- T03 regression walkthrough: 33/33 passed.
+- Build: the SDK is only in `background.js`; the popup and options chunks don't contain it. Manifest permissions: `["storage"]`, no host permissions.
+- Not verified: a successful generation with a real, valid key. That needs your own key and costs tokens; only the error paths were exercised live.
+
+## Validation — T03 (2026-11-08)
 - `pnpm check` exit 0. Vitest: 8 files, 84 tests passed. New: use-case tests (sites, keywords, profile file, API key input) and secrets/data-management tests.
 - Headless Chrome 157 walkthrough of the built options page: **33/33 checks passed**. The script is a throwaway in the session scratchpad, not committed; T12 adds Playwright E2E. Checks:
   - Default OnlineJobs.ph site on first run.

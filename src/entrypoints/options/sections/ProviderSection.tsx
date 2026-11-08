@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ANTHROPIC_MODEL_OPTIONS, DEFAULT_ANTHROPIC_MODEL } from '@/core/schemas';
 import { validateApiKeyInput } from '@/core/use-cases/api-key';
+import { sendToBackground } from '@/ui/background-client';
 import { ConfirmButton, describeError, LoadError, Message, Section } from '@/ui/components';
 import { repos } from '@/ui/services';
 import { useResource } from '@/ui/useResource';
@@ -17,6 +18,19 @@ export function ProviderSection() {
   // The key lives only in this input until saved; it is never read back into the UI.
   const [keyInput, setKeyInput] = useState('');
   const [notice, setNotice] = useState<Notice>(null);
+  const [testing, setTesting] = useState(false);
+
+  async function testKey() {
+    setNotice(null);
+    setTesting(true);
+    const result = await sendToBackground({ type: 'ai/validate-key' });
+    setTesting(false);
+    setNotice(
+      result.ok
+        ? { kind: 'success', text: `Key works. Model ${result.model} is available.` }
+        : { kind: 'error', text: result.error.message },
+    );
+  }
 
   async function act(action: () => Promise<unknown>, success: string) {
     setNotice(null);
@@ -134,7 +148,20 @@ export function ProviderSection() {
               />
             )}
           </form>
-          <p className="muted small">The key is not checked with Anthropic yet.</p>
+          <div className="button-row">
+            <button
+              type="button"
+              data-testid="test-key"
+              disabled={!state.data.hasKey || testing}
+              onClick={() => void testKey()}
+            >
+              {testing ? 'Testing…' : 'Test key'}
+            </button>
+          </div>
+          <p className="muted small">
+            Testing checks your key and the selected model with Anthropic. It does not generate any
+            text, so it uses no tokens.
+          </p>
 
           <details className="disclosure" open>
             <summary>Where your key and data go</summary>

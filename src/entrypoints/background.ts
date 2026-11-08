@@ -1,5 +1,18 @@
-// Background service worker. Orchestration, alarms and AI provider calls are
-// added in later tasks (T04+). Nothing runs here until the user acts.
+import { createBackgroundHandler } from '@/background/handler';
+import { createAIProvider } from '@/providers/ai';
+import { getRepositories } from '@/storage';
+
+// Background service worker: the only context that reads the API key and calls
+// the AI provider. Nothing runs here until a UI page sends a request.
 export default defineBackground(() => {
-  // Intentionally empty for T01.
+  const handle = createBackgroundHandler({
+    repos: getRepositories(),
+    createProvider: createAIProvider,
+    extensionOrigin: browser.runtime.getURL('/'),
+  });
+
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    void handle(message, sender, browser.runtime.id).then(sendResponse);
+    return true; // keep the channel open for the async response
+  });
 });

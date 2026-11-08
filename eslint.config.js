@@ -40,6 +40,24 @@ export default tseslint.config(
     },
   },
   {
+    // Provider/SDK code (and therefore API calls) only in the background worker.
+    files: ['src/ui/**', 'src/entrypoints/**'],
+    ignores: ['src/entrypoints/background.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/providers/*', '@/providers/**', '@anthropic-ai/*'],
+              message: 'AI providers run in the background worker only. Use sendToBackground().',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['*.config.{js,ts}'],
     languageOptions: { globals: { ...globals.node } },
   },
