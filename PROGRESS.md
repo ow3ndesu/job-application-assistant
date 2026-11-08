@@ -1,10 +1,10 @@
 # Development Progress
 
 ## Current pointer
-T07 — Job matching and explanation
+T08 — Application draft generation
 
 ## Overall status
-IN PROGRESS — T00–T06 complete. You can scan OnlineJobs.ph pages you open, filter by keywords, and browse saved jobs. No AI features are in use yet.
+IN PROGRESS — T00–T07 complete. You can scan pages, filter by keywords, browse saved jobs, and get an evidence-checked AI fit estimate per job.
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
@@ -14,14 +14,42 @@ IN PROGRESS — T00–T06 complete. You can scan OnlineJobs.ph pages you open, f
 - T04 — AI provider abstraction and Claude integration (2026-11-08)
 - T05 — Site adapter framework and OnlineJobs.ph discovery (2026-11-08)
 - T06 — Search orchestration and results UI (2026-11-08)
+- T07 — Job matching and explanation (2026-11-08)
 
 ## Current task notes
-- T07 not started. Building blocks:
-  - `AIProvider.generateStructured` (T04), with untrusted job and profile text kept in `userContent` and never in `system`.
-  - `JobMatch` schema and `matches` repo (T02).
-  - `SavedJob` records (T06). Match only jobs with `descriptionSource: detail_page`, or warn that a listing snippet is incomplete.
-  - The profile current version and id (T02/T03).
-  - AI calls must go through the background (`src/background/protocol.ts`), never from UI pages.
+- T08 not started. Reuse the T07 patterns:
+  - The data-block prompt with `neutralizeTags`.
+  - Code-side verification of every factual claim against verbatim profile quotes (`verifyAgainstProfile` / `normalizeForQuote`).
+  - The `injectionSuspected` flag.
+  - A background request type plus a per-item in-flight guard.
+  - The opt-in live test pattern.
+  - Application questions must come only from visible page structures. Under the read-only decision there is no form filling on OnlineJobs.ph; drafts are for copy/export.
+- T07 result:
+  - `src/matching/`:
+    - **`ai-output.ts`:** the model's structured-output schema (`score`, `rationale`, `strengths[{claim, profileQuotes}]`, `gaps`, `uncertainties`, `suspiciousInstructionsInJob`). The SDK turns it into a strict JSON schema and moves unsupported constraints into descriptions; our own Zod check runs afterwards.
+    - **`prompt.ts`:**
+      - Trusted rules live only in `system`. The profile and job go in `<applicant_profile version=N>` / `<job_posting description_complete=…>` data blocks in the user message.
+      - `neutralizeTags` removes those tag names from the data, so job text can't close its block or fake a profile.
+      - The rules require verbatim profile quotes for every strength and ban invented qualifications.
+    - **`verify.ts` (the enforcement, in code):**
+      - A strength is kept only if at least one of its quotes (at least 4 characters, after normalising case, whitespace, typographic quotes, dashes and bullets) appears in the actual profile text. Everything else goes to `unsupportedClaims` and is never shown as a fact.
+      - If no strength can be verified, the score is capped at 30 and an uncertainty explains why.
+    - **`injection.ts`:** a deterministic detector for instruction-like text aimed at AI. It only flags; protection comes from the prompt structure plus verification.
+    - **`match-job.ts`:** builds the prompt, calls `provider.generateStructured`, verifies, adds a "short preview only" uncertainty for snippet jobs, sets `injectionSuspected` (model flag OR detector), and validates the final `JobMatch`.
+  - **`JobMatch` v2:**
+    - `strengths: [{claim, evidence[] (min 1)}]`, plus `unsupportedClaims`, `injectionSuspected`, `basedOnSnippet`, `jobContentHash`, `model`.
+    - Id is `jobId@vN`: one record per job per profile version, so re-checking after a profile edit adds a new record and keeps the old one.
+    - `matches` storage moved to v2 with a migration; any v1 string strengths become unsupported claims.
+  - **Background:** `ai/match-job {jobId}` loads the job, the current profile and the key, then calls `matchJob` (overall timeout 5 min) and saves the result.
+    - Errors: `no_profile`, `job_not_found`, `missing_key`, `busy` (one check per job at a time), plus the provider errors.
+    - Only extension pages are accepted.
+    - `sendToBackground` is now typed per request.
+  - **Saved jobs page:**
+    - **Check fit with AI** is in Details, with a disclosure: "Sends this job's text and your profile (version N) to Anthropic."
+    - The result shows "Estimated fit: N/100 (band)" with the line "An AI estimate based only on what your profile says…"; strengths with "Your profile: “quote”"; Missing requirements; Uncertain; and "Not supported by your profile" with guidance.
+    - Warnings: suspicious post (injection), preview-only, profile changed (vN → vM), job changed.
+    - Footer: checked time, profile version, model. The row shows an "Estimated fit" badge.
+  - **Opt-in live test** `src/matching/match.live.test.ts`: skipped unless `ANTHROPIC_LIVE_TEST_KEY` is set (deliberately not `ANTHROPIC_API_KEY`). It runs a normal job and an injection job against the real API. **Not run by me** (no key).
 - T06 result. How T06 was interpreted under the read-only decision (ToS §7.4):
   - A **scan** is one user click on "Scan this tab" for the page the user opened. There is no crawling or auto-pagination, and nothing runs in the background (no alarms or timers).
   - "Configured sites and keywords" are honoured three ways:
@@ -240,9 +268,32 @@ IN PROGRESS — T00–T06 complete. You can scan OnlineJobs.ph pages you open, f
 - Note: `corepack enable` needs admin rights here. The dev guide (T01) should document `npm install -g pnpm` as the fallback.
 
 ## Last completed task
-- T06 — Search orchestration and results UI (2026-11-08)
+- T07 — Job matching and explanation (2026-11-08)
 
-## Last validation — T06 (2026-11-08)
+## Last validation — T07 (2026-11-08)
+- `pnpm check` exit 0. Vitest: 16 files passed + 1 skipped; 198 tests passed, 3 skipped (2 live files skipped without env vars).
+  - Prompt tests: rules only in `system`; data only in the user blocks; snippet marking; job text can't close or fake data blocks.
+  - Injection detector: 6 attack phrasings flagged, 3 normal phrasings not.
+  - Verification: tolerant quote matching; fabricated, empty or too-short quotes go to unsupported claims; mixed quotes keep only the verified one; score capped when nothing is verified.
+  - `matchJob`:
+    - schema-valid, with profile version, model and job hash
+    - **prompt-injection case:** a "fooled" model answering score 100 with claims quoted from the job text gives 0 strengths, 2 unsupported claims, score 30 and `injectionSuspected` true (detected in code although the model said false)
+    - the model's own flag is respected
+    - a snippet job gets an uncertainty
+    - **re-evaluation after a profile change creates separate v1 and v2 records**
+    - provider errors are passed through
+  - Background `match-job`: success saves the match; no profile, unknown job or no key don't call the provider; concurrent duplicates are rejected; a web-page sender is rejected.
+  - Schema: a strength without evidence (or a plain string) is rejected.
+- Headless Chrome 157 end-to-end (`e2e-t07`, release build; the service worker's `api.anthropic.com` calls intercepted with canned model output, including CORS preflight; **no real API call**): **18/18 passed**.
+  - Honest job: "Estimated fit: 78/100" with the estimate wording; 2 strengths with profile quotes; gaps and uncertainties; profile version and model; the row badge persists after reload.
+  - Injection job (the canned model said score 100 with a quote from the job text): warning shown; 0 strengths; "Has a PhD" under "Not supported by your profile"; score capped at 30.
+  - After editing the profile: the "profile changed" notice appears; re-check stores v1 and v2 matches; the notice clears.
+  - Requests: 3 calls from the background worker to `POST https://api.anthropic.com/v1/messages` with `anthropic-dangerous-direct-browser-access: true`, `Authorization: Bearer <key>`, `anthropic-version: 2026-10-21` and `anthropic-beta: server-side-fallback-2026-07-01`. The rules are in `system`; job and profile only in data blocks; `output_config.format` is `json_schema`; `fallbacks: "default"`.
+  - 0 console errors; the key never appears in the page.
+- Regressions: T03 33/33, T04 7/7 (release); T06 19/19 (E2E build). Release manifest: no host permissions.
+- Not verified: real model behaviour (quality and injection resistance with the live model). Run the opt-in live test with your key.
+
+## Validation — T06 (2026-11-08)
 - `pnpm check` exit 0. Vitest: 15 files passed + 1 skipped (live); 169 tests passed, 3 skipped.
   - Keyword-funnel tests: boundaries, phrases, exclusions win, no-keywords case.
   - `runScan` tests (real adapter on the fixtures):

@@ -1,4 +1,5 @@
 import { createBackgroundHandler } from '@/background/handler';
+import { systemClock } from '@/core/domain';
 import { createAIProvider } from '@/providers/ai';
 import { getRepositories } from '@/storage';
 
@@ -9,6 +10,7 @@ export default defineBackground(() => {
     repos: getRepositories(),
     createProvider: createAIProvider,
     extensionOrigin: browser.runtime.getURL('/'),
+    clock: systemClock,
   });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {

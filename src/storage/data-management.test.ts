@@ -14,7 +14,12 @@ const match = {
   strengths: [],
   gaps: [],
   uncertainties: [],
+  unsupportedClaims: [],
   rationale: 'Estimate.',
+  injectionSuspected: false,
+  basedOnSnippet: false,
+  jobContentHash: 'abc123',
+  model: 'claude-opus-5-5',
   evaluatedAt: '2026-11-08T00:00:00.000Z',
 };
 const draft = {

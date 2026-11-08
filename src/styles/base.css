@@ -497,3 +497,30 @@ button.link-button {
     flex-direction: column;
   }
 }
+
+/* Match panel */
+.match-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.match-score {
+  font-size: 1.05rem;
+  margin: 8px 0 2px;
+}
+
+.warnings {
+  list-style: none;
+  padding: 0;
+}
+
+.evidence-list .quote {
+  color: var(--muted);
+  font-size: 0.85rem;
+  list-style: none;
+}
+
+.evidence-list ul {
+  padding-left: 12px;
+}

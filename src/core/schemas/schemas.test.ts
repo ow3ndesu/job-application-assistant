@@ -95,10 +95,15 @@ describe('JobMatchSchema', () => {
     profileId: 'p1',
     profileVersion: 1,
     score: 70,
-    strengths: ['Has VA experience'],
+    strengths: [{ claim: 'Has VA experience', evidence: ['3 years as a virtual assistant'] }],
     gaps: [],
     uncertainties: [],
+    unsupportedClaims: [],
     rationale: 'Estimate based on profile.',
+    injectionSuspected: false,
+    basedOnSnippet: false,
+    jobContentHash: 'abc',
+    model: 'claude-opus-5-5',
     evaluatedAt: '2026-11-08T00:00:00.000Z',
   };
 
@@ -106,6 +111,14 @@ describe('JobMatchSchema', () => {
     expect(JobMatchSchema.safeParse(match).success).toBe(true);
     expect(JobMatchSchema.safeParse({ ...match, score: 101 }).success).toBe(false);
     expect(JobMatchSchema.safeParse({ ...match, score: 50.5 }).success).toBe(false);
+  });
+
+  it('rejects a strength without evidence (claims must cite the profile)', () => {
+    expect(
+      JobMatchSchema.safeParse({ ...match, strengths: [{ claim: 'Knows Python', evidence: [] }] })
+        .success,
+    ).toBe(false);
+    expect(JobMatchSchema.safeParse({ ...match, strengths: ['plain string'] }).success).toBe(false);
   });
 });
 

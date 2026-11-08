@@ -1,21 +1,43 @@
 import { useMemo, useState } from 'react';
 import { APP_NAME } from '@/core/app-info';
-import type { SavedJob, ScanRecord, SearchKeywords, TargetSite } from '@/core/schemas';
+import type { JobMatch, SavedJob, ScanRecord, SearchKeywords, TargetSite } from '@/core/schemas';
 import { applyKeywordFunnel, jobSearchText } from '@/core/use-cases/keyword-funnel';
 import { ConfirmButton, describeError, LoadError, Message, Section } from '@/ui/components';
 import { JobLink } from '@/ui/JobLink';
 import { repos } from '@/ui/services';
 import { useResource } from '@/ui/useResource';
+import { MatchPanel } from './MatchPanel';
 
 const loadAll = async () => {
-  const [jobs, scans, keywords, sites] = await Promise.all([
+  const [jobs, scans, keywords, sites, matches, profile] = await Promise.all([
     repos.jobs.list(),
     repos.scans.list(),
     repos.searchKeywords.get(),
     repos.targetSites.list(),
+    repos.matches.list(),
+    repos.profile.getCurrent(),
   ]);
-  return { jobs, scans: scans.items, keywords, sites: sites.items };
+  const profileVersion = profile?.content.trim() ? profile.version : null;
+  return {
+    jobs,
+    scans: scans.items,
+    keywords,
+    sites: sites.items,
+    matches: latestMatches(matches.items, profileVersion),
+    profileVersion,
+  };
 };
+
+/** Per job: the match for the current profile version if any, else the newest. */
+function latestMatches(matches: JobMatch[], profileVersion: number | null): Map<string, JobMatch> {
+  const byJob = new Map<string, JobMatch>();
+  for (const m of [...matches].sort((a, b) => a.evaluatedAt.localeCompare(b.evaluatedAt))) {
+    const prev = byJob.get(m.jobId);
+    const prevIsCurrent = prev?.profileVersion === profileVersion;
+    if (!prev || !prevIsCurrent || m.profileVersion === profileVersion) byJob.set(m.jobId, m);
+  }
+  return byJob;
+}
 
 const fmt = (iso: string) => new Date(iso).toLocaleString();
 
@@ -57,6 +79,8 @@ export function App() {
             invalidCount={state.data.jobs.invalid.length}
             keywords={state.data.keywords}
             sites={state.data.sites}
+            matches={state.data.matches}
+            profileVersion={state.data.profileVersion}
             onChanged={reload}
           />
           <ScanHistory scans={state.data.scans} />
@@ -71,6 +95,8 @@ function JobList(props: {
   invalidCount: number;
   keywords: SearchKeywords;
   sites: TargetSite[];
+  matches: Map<string, JobMatch>;
+  profileVersion: number | null;
   onChanged: () => void;
 }) {
   const [query, setQuery] = useState('');
@@ -178,6 +204,9 @@ function JobList(props: {
               job={job}
               keywords={props.keywords}
               sourceLabel={sourceLabel(job.source)}
+              match={props.matches.get(job.id)}
+              profileVersion={props.profileVersion}
+              onMatched={props.onChanged}
               onRemove={async () => {
                 setError(null);
                 try {
@@ -200,6 +229,9 @@ function JobRow(props: {
   job: SavedJob;
   keywords: SearchKeywords;
   sourceLabel: string;
+  match: JobMatch | undefined;
+  profileVersion: number | null;
+  onMatched: () => void;
   onRemove: () => Promise<void>;
 }) {
   const { job } = props;
@@ -220,6 +252,12 @@ function JobRow(props: {
           {job.postedAt ? ` · posted ${job.postedAt}` : ''}
           {` · first seen ${fmt(job.firstSeenAt)}`}
         </p>
+        {props.match && (
+          <p className="small" data-testid="fit-badge">
+            <span className="badge">Estimated fit {props.match.score}/100</span>
+            {props.match.injectionSuspected && <span className="badge err"> Suspicious post</span>}
+          </p>
+        )}
         {(current.matchedInclude.length > 0 || current.matchedExclude.length > 0) && (
           <ul className="chips" aria-label="Keyword matches">
             {current.matchedInclude.map((k) => (
@@ -271,6 +309,12 @@ function JobRow(props: {
               <br />
               First seen {fmt(job.firstSeenAt)} · last seen {fmt(job.lastSeenAt)}
             </p>
+            <MatchPanel
+              job={job}
+              latest={props.match}
+              currentProfileVersion={props.profileVersion}
+              onMatched={props.onMatched}
+            />
           </div>
         )}
       </div>

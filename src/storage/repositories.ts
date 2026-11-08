@@ -8,6 +8,7 @@ import {
   emptySecrets,
   JobMatchSchema,
   migrateJobsV1toV2,
+  migrateMatchesV1toV2,
   SavedJobSchema,
   ScanRecordSchema,
   migrateTargetSitesV1toV2,
@@ -89,7 +90,12 @@ export function createRepositories(store: KeyValueStore, deps: RepositoryDeps = 
     ),
     matches: new CollectionRepository(
       store,
-      { key: STORAGE_KEYS.matches, version: 1, schema: JobMatchSchema },
+      {
+        key: STORAGE_KEYS.matches,
+        version: 2,
+        schema: JobMatchSchema,
+        migrations: { 1: migrateMatchesV1toV2 },
+      },
       clock,
     ),
     drafts: new CollectionRepository(
