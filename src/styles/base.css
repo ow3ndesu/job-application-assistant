@@ -650,3 +650,17 @@ pre.diff {
   display: block;
   color: var(--muted);
 }
+
+/* Getting started */
+.getting-started ol {
+  padding-left: 20px;
+  margin: 8px 0 0;
+}
+
+.getting-started li {
+  margin-bottom: 8px;
+}
+
+.getting-started li.done strong {
+  color: var(--ok-text);
+}

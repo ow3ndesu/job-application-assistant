@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { APP_NAME } from '@/core/app-info';
 import { openJobsPage } from '@/ui/open-tab';
 import { DataSection } from './sections/DataSection';
+import { GettingStarted } from './sections/GettingStarted';
 import { PrivacySection } from './sections/PrivacySection';
 import { KeywordsSection } from './sections/KeywordsSection';
 import { ProfileSection } from './sections/ProfileSection';
@@ -45,6 +46,7 @@ export function App() {
         </nav>
       </header>
       <main key={epoch}>
+        <GettingStarted />
         <ProfileSection />
         <SitesSection />
         <KeywordsSection />

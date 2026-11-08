@@ -2,7 +2,7 @@
   "name": "job-application-assistant",
   "description": "AI-assisted job discovery and application workflow with user-controlled review.",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -18,7 +18,10 @@
     "test:watch": "vitest",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build && pnpm audit:secrets",
     "postinstall": "wxt prepare",
-    "audit:secrets": "node scripts/check-secrets.mjs"
+    "audit:secrets": "node scripts/check-secrets.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "release:verify": "node scripts/verify-release.mjs",
+    "release": "pnpm check && pnpm e2e && pnpm zip && pnpm release:verify"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

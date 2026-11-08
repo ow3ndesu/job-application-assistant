@@ -1,10 +1,18 @@
 # Development Progress
 
 ## Current pointer
-T12 — End-to-end testing and release preparation
+Post-MVP planning (no task defined yet; see "Post-MVP candidates" below)
 
 ## Overall status
-IN PROGRESS — T00–T11 complete. MVP features built and security-reviewed; release preparation (T12) remains. (`master` holds T01–T07; T08–T11 are on stacked `feat/t08…` to `feat/t11-security-review` branches.)
+**MVP COMPLETE (v0.1.0, private beta)**: T00–T12 done. Release pipeline (`pnpm release`) passes end to end. (`master` holds T01–T07; T08–T12 are on stacked `feat/t08…` to `feat/t12-release-prep` branches; merge to `master` when you're ready.)
+
+## Post-MVP candidates (not started; for planning)
+- Verify with real Anthropic credits: run the opt-in live tests (`ANTHROPIC_LIVE_TEST_KEY`) and do a manual pass of fit check, drafts and AI suggestions.
+- Inspect logged-in OnlineJobs.ph pages (you save them; `OLJ_LIVE_DIR` live test) and extend the adapter if the layout differs.
+- Publish `docs/PRIVACY.md` (add a contact address) and prepare the Chrome Web Store listing (`docs/RELEASE.md` checklist).
+- More job sites, each with its own terms review, adapter, fixtures and `formAssistance` decision.
+- Optional: encrypt stored data with a user passphrase (raises usability questions; today it's disclosed as unencrypted).
+- Optional: merge the stacked feature branches into `master` and tag `v0.1.0`.
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
@@ -19,13 +27,32 @@ IN PROGRESS — T00–T11 complete. MVP features built and security-reviewed; re
 - T09 — Human-approved application assistance (2026-11-08)
 - T10 — Profile improvement proposals (2026-11-08)
 - T11 — Security, privacy, and permission review (2026-11-08)
+- T12 — End-to-end testing and release preparation (2026-11-08)
 
 ## Current task notes
-- T12 not started. Inputs:
-  - The headless-Chrome scripts used so far live in the session scratchpad, not the repo. Turn them into committed Playwright E2E tests covering setup, profile import, scan, match, draft, approval and cancellation.
-  - Also run them against a **development** build, so React warnings (such as duplicate keys, see T10) show up.
-  - Retire `e2e-t05`: it targets the T05 popup UI that T06 replaced, and `e2e-t06` covers the same path.
-  - Fill in the contact field in `docs/PRIVACY.md` before publishing.
+- T12 result:
+  - **E2E framework decision:** committed CDP-based E2E instead of Playwright. Chrome 137+ ignores `--load-extension`, which Playwright's extension support relies on. The CDP harness (`Extensions.loadUnpacked` over the pipe transport) uses the installed Chrome and needs no new dependency or browser download.
+  - **Network safety:** every host is mapped to 0.0.0.0; OnlineJobs.ph documents and Anthropic API calls are answered from fixtures before DNS, so there is **no live traffic**.
+  - `tests/e2e/harness.mjs`: finds Chrome (`CHROME_PATH` or standard paths); temporary profile; page and worker sessions; interception; reporter; a console-problem filter (errors **and warnings**).
+  - `tests/e2e/journeys.e2e.mjs`, 28 checks across 9 journeys:
+    1. clean install (default site, Getting started, popup status, privacy text)
+    2. setup (`.md` import, keywords, masked key)
+    3. scan (keyword funnel, re-scan dedupe, job-post upgrade, login page)
+    4. fit check (estimate wording, profile quotes, data kept out of `system`)
+    5. draft (sensitive question never sent)
+    6. approval, final confirmation and cancellation
+    7. profile improvement (approval-gated, new version)
+    8. CSP network lockdown
+    9. delete everything
+    - Plus zero console errors or warnings in every extension context.
+  - `tests/e2e/upgrade.e2e.mjs`, 9 checks: v1 storage for settings, sites, jobs, matches and drafts migrates on load with no loss, nothing quarantined, and no console problems. Old unverified strengths become "not supported".
+  - `scripts/e2e.mjs` (`pnpm e2e`): journeys on a production E2E build and a **development** E2E build, then a clean release build, the upgrade test and release verification.
+  - `scripts/verify-release.mjs` (`pnpm release:verify`), 23 checks: MV3; version; permissions exactly `activeTab`, `scripting`, `storage`; none of host, optional, content-script, external or web-accessible entries; exact CSP; no source maps; no test flags; the docs and the in-app privacy section mention each permission, `api.anthropic.com` and "not encrypted"; Limited Use statement present; secret scan.
+  - `pnpm release` = check + e2e + zip + release:verify.
+  - **Onboarding:** a Getting started checklist in Settings (profile, keywords, scan, API key with the credit note); it hides itself when everything is done.
+  - **Docs:** `docs/RELEASE.md` (steps, versioning and migrations, store checklist), `docs/TROUBLESHOOTING.md` (every user-facing error message: meaning and fix), and a README rewrite (user getting-started, dev commands, layout).
+  - Version **0.1.0**.
+  - The scratchpad `e2e-tNN` scripts are superseded and never committed; `e2e-t05` was already obsolete.
 - T11 result. Full review in `docs/SECURITY.md`; privacy policy draft (with the Chrome Web Store Limited Use statement) in `docs/PRIVACY.md`. Changes:
   - **Strict CSP** for extension pages and the service worker: `script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; connect-src 'self' https://api.anthropic.com`. Network access is limited to the extension and the Anthropic API.
   - The Anthropic SDK is created with `logLevel: 'off'`, so the SDK never logs.
@@ -369,9 +396,28 @@ IN PROGRESS — T00–T11 complete. MVP features built and security-reviewed; re
   - Test added; `pnpm check` 242 passed; `e2e-t07b` 14/14.
 
 ## Last completed task
-- T11 — Security, privacy, and permission review (2026-11-08)
+- T12 — End-to-end testing and release preparation (2026-11-08). **MVP complete.**
 
-## Last validation — T11 (2026-11-08)
+## Last validation — T12 (2026-11-08)
+- **`pnpm release` exit 0**:
+  - `pnpm check`: 283 unit tests passed, 5 skipped (live); secret scan of 165 files.
+  - `pnpm e2e`: journeys 28/28 on the production E2E build; **journeys 28/28 on the development E2E build** (no React warnings); upgrade 9/9 on the release build; release verification 23/23.
+  - `pnpm zip`: `.output/job-application-assistant-0.1.0-chrome.zip` (262.6 kB).
+  - Release verification 23/23.
+- **Clean install:** a fresh copy of the repo (144 files, new git repo) passed `pnpm install --frozen-lockfile`, then `pnpm check` (283 passed), then `pnpm e2e` (28/28, 28/28, 9/9, 23/23).
+- **Reproducible build:** two clean `wxt build` runs produced byte-identical output (18 files, SHA-256 compared).
+- **Package contents:** the release zip unpacked to the same 18 files. The manifest is 0.1.0 with `storage`, `activeTab`, `scripting` and no host permissions. 0 matches for key patterns or test key strings.
+- **Release verifier rejects test builds:** on an E2E build it failed (21/23: host permission and job-site pattern), so an E2E build can't be released by mistake.
+- **The dev-build console check catches real bugs:** with T10's duplicate React key temporarily put back, the dev-build journeys failed (exit 1); the fix was restored (no diff).
+- Known limitations (also in `docs/SECURITY.md` §10):
+  - unencrypted local storage (disclosed)
+  - real model behaviour verified only with mocks (opt-in live tests exist; needs API credits)
+  - logged-in OnlineJobs.ph markup not inspected
+  - heuristic sensitive-question, fact-likeness and injection detection
+  - application status is user-reported only
+  - Cancel mid-scan is unit-tested only (a real scan is too fast to click Cancel)
+
+## Validation — T11 (2026-11-08)
 - `pnpm check` exit 0, including the new secret scan: 283 tests passed, 5 skipped (live); "Secret scan passed: 156 files checked (source + .output)".
 - Secret scanner: a planted fake Anthropic key in an untracked file → exit 1 with the finding; after removing it → exit 0.
 - Lint security rules, via `eslint --stdin` probes: `dangerouslySetInnerHTML`, `innerHTML =`, `insertAdjacentHTML` and `document.write` are each flagged; `o.write(1)` is not.
