@@ -1,7 +1,7 @@
 import { APP_NAME } from '@/core/app-info';
 import { repos } from '@/ui/services';
 import { useResource } from '@/ui/useResource';
-import { PageCheck } from './PageCheck';
+import { ScanPanel } from './ScanPanel';
 
 const loadStatus = async () => {
   const [profile, sites, hasKey] = await Promise.all([
@@ -35,7 +35,7 @@ export function App() {
       {state.status === 'error' && (
         <p className="message error">Saved data could not be read. Open settings to fix it.</p>
       )}
-      <PageCheck />
+      <ScanPanel />
       <button type="button" onClick={() => void browser.runtime.openOptionsPage()}>
         Open settings
       </button>

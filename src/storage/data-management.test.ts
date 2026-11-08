@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_TARGET_SITE_ID, defaultSettings } from '@/core/schemas';
-import { fixedClock, sampleJob } from '../../tests/helpers';
+import { fixedClock, sampleSavedJob } from '../../tests/helpers';
 import { createDataManagement } from './data-management';
 import { MemoryKeyValueStore } from './kv';
 import { createRepositories, type Repositories } from './repositories';
@@ -38,7 +38,7 @@ describe('secrets and data management', () => {
     store = new MemoryKeyValueStore();
     repos = createRepositories(store, { clock: fixedClock() });
     await repos.profile.saveContent('# Me');
-    await repos.jobs.upsert(sampleJob());
+    await repos.jobs.upsert(sampleSavedJob());
     await repos.matches.upsert(match);
     await repos.drafts.upsert(draft);
     await repos.settings.update((s) => ({ ...s, scan: { ...s.scan, maxJobsPerScan: 9 } }));

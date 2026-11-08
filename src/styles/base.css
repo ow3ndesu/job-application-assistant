@@ -402,3 +402,98 @@ button.link-button {
   font-size: 0.85rem;
   cursor: pointer;
 }
+
+/* Saved jobs */
+.job-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.job-row:last-child {
+  border-bottom: none;
+}
+
+.job-row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.job-row .actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.job-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.job-title:hover,
+.job-title:focus-visible {
+  text-decoration: underline;
+}
+
+.job-row p {
+  margin: 4px 0;
+}
+
+.snippet,
+.full-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chip.match {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  border-color: transparent;
+  padding-right: 10px;
+}
+
+.chip.exclude {
+  background: var(--err-bg);
+  border-color: transparent;
+  padding-right: 10px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.facts dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.badge.err {
+  background: var(--err-bg);
+  border-color: transparent;
+}
+
+.search-shortcuts {
+  margin-bottom: 10px;
+}
+
+.search-shortcuts ul {
+  padding-left: 18px;
+  margin: 6px 0;
+}
+
+@media (max-width: 640px) {
+  .job-row {
+    flex-direction: column;
+  }
+}

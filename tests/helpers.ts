@@ -1,5 +1,5 @@
 import type { Clock, IdGenerator } from '@/core/domain';
-import type { JobPosting } from '@/core/schemas';
+import type { JobPosting, SavedJob } from '@/core/schemas';
 
 export function fixedClock(
   iso = '2026-11-08T00:00:00.000Z',
@@ -28,6 +28,17 @@ export function sampleJob(overrides: Partial<JobPosting> = {}): JobPosting {
     requirements: ['Good written English'],
     extractedAt: '2026-11-08T00:00:00.000Z',
     contentHash: 'abc123',
+    ...overrides,
+  };
+}
+
+export function sampleSavedJob(overrides: Partial<SavedJob> = {}): SavedJob {
+  const job = sampleJob();
+  return {
+    ...job,
+    firstSeenAt: job.extractedAt,
+    lastSeenAt: job.extractedAt,
+    matchedKeywords: [],
     ...overrides,
   };
 }

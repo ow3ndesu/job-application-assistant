@@ -30,6 +30,8 @@ export type Settings = z.infer<typeof SettingsSchema>;
 export function defaultSettings(): Settings {
   return {
     ai: { provider: 'anthropic' },
-    scan: { maxJobsPerScan: 25, requestDelayMs: SETTINGS_LIMITS.minRequestDelayMs },
+    // A scan reads one page; an OnlineJobs.ph search page shows 30 jobs, so the
+    // default must not cut a full page short (was 25 before T06).
+    scan: { maxJobsPerScan: 100, requestDelayMs: SETTINGS_LIMITS.minRequestDelayMs },
   };
 }

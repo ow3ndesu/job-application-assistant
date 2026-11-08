@@ -7,3 +7,4 @@ export * from './match';
 export * from './draft';
 export * from './secrets';
 export * from './models';
+export * from './scan';

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { DEFAULT_TARGET_SITE_URL, defaultSettings } from '@/core/schemas';
-import { fixedClock, sampleJob } from '../../tests/helpers';
+import { fixedClock, sampleSavedJob } from '../../tests/helpers';
 import { createBrowserLocalStore } from './browser-store';
 import { createRepositories } from './repositories';
 
@@ -50,7 +50,7 @@ describe('repositories over browser.storage.local (fake browser)', () => {
     await a.settings.update((s) => ({ ...s, scan: { ...s.scan, maxJobsPerScan: 10 } }));
     await a.searchKeywords.set({ include: ['virtual assistant'], exclude: ['sales'] });
     await a.profile.saveContent('# Profile');
-    await a.jobs.upsert(sampleJob());
+    await a.jobs.upsert(sampleSavedJob());
 
     const b = createRepositories(createBrowserLocalStore());
     expect((await b.settings.get()).scan.maxJobsPerScan).toBe(10);
@@ -59,13 +59,13 @@ describe('repositories over browser.storage.local (fake browser)', () => {
       exclude: ['sales'],
     });
     expect((await b.profile.getCurrent())?.content).toBe('# Profile');
-    expect(await b.jobs.get('job-1')).toEqual(sampleJob());
+    expect(await b.jobs.get('job-1')).toEqual(sampleSavedJob());
   });
 
   it('clearAll() deletes everything', async () => {
     const repos = createRepositories(createBrowserLocalStore(), { clock: fixedClock() });
     await repos.profile.saveContent('# Profile');
-    await repos.jobs.upsert(sampleJob());
+    await repos.jobs.upsert(sampleSavedJob());
     await repos.clearAll();
     expect(await fakeBrowser.storage.local.get(null)).toEqual({});
     expect(await repos.profile.getCurrent()).toBeNull();

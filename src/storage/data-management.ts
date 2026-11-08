@@ -5,10 +5,11 @@ export function createDataManagement(repos: Repositories) {
   return {
     /** Profile and all previous versions. */
     deleteProfile: () => repos.profile.clear(),
-    /** Saved jobs and their match results (matches reference jobs). */
+    /** Saved jobs, their match results (matches reference jobs) and scan history. */
     deleteJobs: async () => {
       await repos.jobs.clear();
       await repos.matches.clear();
+      await repos.scans.clear();
     },
     deleteDrafts: () => repos.drafts.clear(),
     /** Settings, target sites (back to the OnlineJobs.ph default) and keywords. */

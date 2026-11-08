@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { APP_NAME } from '@/core/app-info';
+import { openJobsPage } from '@/ui/open-tab';
 import { DataSection } from './sections/DataSection';
 import { KeywordsSection } from './sections/KeywordsSection';
 import { ProfileSection } from './sections/ProfileSection';
@@ -30,6 +31,15 @@ export function App() {
               {label}
             </a>
           ))}
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              openJobsPage();
+            }}
+          >
+            Saved jobs →
+          </a>
         </nav>
       </header>
       <main key={epoch}>

@@ -1,10 +1,10 @@
 # Development Progress
 
 ## Current pointer
-T06 — Search orchestration and results UI
+T07 — Job matching and explanation
 
 ## Overall status
-IN PROGRESS — T00–T05 complete. The extension can read jobs from an OnlineJobs.ph page you have open (preview only; nothing saved yet).
+IN PROGRESS — T00–T06 complete. You can scan OnlineJobs.ph pages you open, filter by keywords, and browse saved jobs. No AI features are in use yet.
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
@@ -13,13 +13,45 @@ IN PROGRESS — T00–T05 complete. The extension can read jobs from an OnlineJo
 - T03 — Settings and profile management UI (2026-11-08)
 - T04 — AI provider abstraction and Claude integration (2026-11-08)
 - T05 — Site adapter framework and OnlineJobs.ph discovery (2026-11-08)
+- T06 — Search orchestration and results UI (2026-11-08)
 
 ## Current task notes
-- T06 not started. Building blocks from T05:
-  - `captureActiveTab()` and `extractPage()` produce validated `JobPosting[]` plus a status.
-  - `mergeJobPosting` / `dedupeJobs` / `partitionNewJobs` handle duplicates.
-  - `jobs` collection repo (T02) for persistence.
-  - Under the read-only decision, a "scan" means: you open the search page (or each result page) yourself, possibly via `adapter.searchUrl(keyword)` opened in a tab, then click "Read jobs from this tab". The extension never fetches pages or follows pagination by itself.
+- T07 not started. Building blocks:
+  - `AIProvider.generateStructured` (T04), with untrusted job and profile text kept in `userContent` and never in `system`.
+  - `JobMatch` schema and `matches` repo (T02).
+  - `SavedJob` records (T06). Match only jobs with `descriptionSource: detail_page`, or warn that a listing snippet is incomplete.
+  - The profile current version and id (T02/T03).
+  - AI calls must go through the background (`src/background/protocol.ts`), never from UI pages.
+- T06 result. How T06 was interpreted under the read-only decision (ToS §7.4):
+  - A **scan** is one user click on "Scan this tab" for the page the user opened. There is no crawling or auto-pagination, and nothing runs in the background (no alarms or timers).
+  - "Configured sites and keywords" are honoured three ways:
+    - the page must belong to an **enabled** target site;
+    - the keyword funnel decides what is saved;
+    - popup **search shortcuts** open `adapter.searchUrl(keyword)` for each enabled site and include-keyword, for you to scan.
+  - Concurrency is 1 (the scan button is disabled while a scan runs). Pacing comes from you, since every page load is yours.
+- T06 pieces:
+  - `src/core/use-cases/keyword-funnel.ts`:
+    - Case-insensitive phrase matching with word boundaries ("va" matches "VA/Admin" but not "Java"; "c++" and "e-commerce" work).
+    - Matches title, type, pay, skills and description. Exclusions always win. With no include keywords, everything not excluded passes.
+  - `src/scan/run-scan.ts`, `runScan()` with all dependencies injected:
+    - read → check site enabled → extract → funnel → max-jobs limit → merge/save → record history.
+    - Phases are reported for the UI. `AbortSignal` is checked before saving; a cancelled scan saves nothing and is recorded as `cancelled`.
+    - Counts: found, saved, new, updated, unchanged, filteredOut, skipped. Unchanged means same `contentHash` and same description source.
+    - Errors are contained as a `failed`/`error` record.
+    - History keeps the 50 most recent scans.
+  - Schemas: `SavedJob` (= `JobPosting` + `firstSeenAt`, `lastSeenAt`, `matchedKeywords`) and `ScanRecord`. `jobs` storage moved to v2 (migration v1→v2 adds the seen fields; no released build had written v1 jobs). New `scans` collection.
+  - Popup `ScanPanel` (replaces the T05 preview):
+    - search shortcuts, "Scan this tab" with phase text and **Cancel**
+    - a summary ("Found 30 jobs, saved 30 (30 new)" / "(30 already saved)" / "(1 updated)"), notes for filtered-out jobs and the per-scan limit
+    - job links, "Show all", and "Open saved jobs →"
+  - New **Saved jobs** page (`jobs.html`, unlisted; linked from the popup and Settings):
+    - filters: text, type, site, and "Only jobs matching my current keywords"
+    - rows show a title link to the source, site, pay, type, posted date, first seen, matched or excluded keyword chips, and a snippet
+    - **Details** shows the full text, skills, labelled facts, source URL and first/last seen, with a "this is the short preview" note for listing-only jobs
+    - **Remove** with confirmation
+    - **Scan history** shows status labels for every page-level failure
+  - Settings → Your data: "Delete jobs" now also clears scan history; the label says so.
+  - **Default `maxJobsPerScan` changed from 25 to 100.** An OnlineJobs.ph search page shows 30 jobs, so 25 silently cut full pages short (found by E2E). Stored user values are unchanged.
 - T05 result:
   - **Site inspection (live):** four public, logged-out requests on 2026-11-08, each more than 5 s apart, using a descriptive user agent: `robots.txt`, `llms.txt`, `/jobseekers`, `/jobseekers/jobsearch`, plus one job post. No more automated requests were made. Raw copies are kept only in the session scratchpad, never committed.
     - `robots.txt`: crawl delay 5 s; disallows only `/min/` and `/jobseekers_pictures/`.
@@ -208,9 +240,32 @@ IN PROGRESS — T00–T05 complete. The extension can read jobs from an OnlineJo
 - Note: `corepack enable` needs admin rights here. The dev guide (T01) should document `npm install -g pnpm` as the fallback.
 
 ## Last completed task
-- T05 — Site adapter framework and OnlineJobs.ph discovery (2026-11-08)
+- T06 — Search orchestration and results UI (2026-11-08)
 
-## Last validation — T05 (2026-11-08)
+## Last validation — T06 (2026-11-08)
+- `pnpm check` exit 0. Vitest: 15 files passed + 1 skipped (live); 169 tests passed, 3 skipped.
+  - Keyword-funnel tests: boundaries, phrases, exclusions win, no-keywords case.
+  - `runScan` tests (real adapter on the fixtures):
+    - phase order; save and record
+    - re-scan gives 0 new / 3 unchanged, keeps `firstSeenAt` and updates `lastSeenAt`
+    - a job post upgrades its snippet
+    - funnel counts and matched keywords
+    - max-jobs limit
+    - disabled and unconfigured sites
+    - login page, unreadable tab and adapter crash are recorded, nothing saved
+    - cancel during each of 3 phases saves nothing
+    - history pruned to 50
+- Headless Chrome 157 end-to-end (`e2e-t06`, E2E build; www.onlinejobs.ph intercepted with the saved raw server HTML; **no live traffic**): **19/19 passed**.
+  - Scans: first scan found 30, saved 30 new. Re-scan: 30 already saved, storage still 30. Job post: 1 updated. Keywords (`english`, `ecommerce`; exclude `sales`): 6 saved, 24 filtered out.
+  - Search shortcuts: 2 shown; clicking one opens `…/jobsearch?jobkeyword=english`.
+  - Failures: login page shows a clear message; a disabled site shows "disabled in Settings" and saves nothing. No scans in 4 s idle.
+  - Saved jobs page: 30 rows with link and metadata. Details: full text plus 4 facts for the scanned post; "short preview" note for a listing-only job. The "matching" filter shows 6 rows; text search narrows the list. History shows 6 entries, including the 2 failures.
+  - 0 console errors on the popup and the saved jobs page.
+  - The first run found the 25-job default limit cutting pages (15/19); fixed (default now 100), then 19/19.
+- Regressions on the release build: T03 33/33, T04 7/7. Release manifest: `storage`, `activeTab`, `scripting`; no host permissions.
+- Not covered end-to-end: clicking **Cancel** mid-scan in the UI (a real scan finishes in well under a second, so it can't be timed reliably). Cancellation is covered by unit tests for each phase.
+
+## Validation — T05 (2026-11-08)
 ### Fixture tests (synthetic text, Chrome-serialized markup)
 - `pnpm check` exit 0. Vitest: 12 files passed + 1 skipped (live); 141 tests passed, 3 skipped (the live tests, which need `OLJ_LIVE_DIR`).
 - Adapter fixture tests:

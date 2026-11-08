@@ -7,7 +7,9 @@ import {
   emptyProfileState,
   emptySecrets,
   JobMatchSchema,
-  JobPostingSchema,
+  migrateJobsV1toV2,
+  SavedJobSchema,
+  ScanRecordSchema,
   migrateTargetSitesV1toV2,
   ProfileStateSchema,
   SearchKeywordsSchema,
@@ -30,6 +32,7 @@ export const STORAGE_KEYS = {
   jobs: 'jobs',
   matches: 'matches',
   drafts: 'drafts',
+  scans: 'scans',
   secrets: 'secrets',
 } as const;
 
@@ -76,7 +79,12 @@ export function createRepositories(store: KeyValueStore, deps: RepositoryDeps = 
     profile: new ProfileRepository(profileState, clock, ids),
     jobs: new CollectionRepository(
       store,
-      { key: STORAGE_KEYS.jobs, version: 1, schema: JobPostingSchema },
+      {
+        key: STORAGE_KEYS.jobs,
+        version: 2,
+        schema: SavedJobSchema,
+        migrations: { 1: migrateJobsV1toV2 },
+      },
       clock,
     ),
     matches: new CollectionRepository(
@@ -87,6 +95,11 @@ export function createRepositories(store: KeyValueStore, deps: RepositoryDeps = 
     drafts: new CollectionRepository(
       store,
       { key: STORAGE_KEYS.drafts, version: 1, schema: ApplicationDraftSchema },
+      clock,
+    ),
+    scans: new CollectionRepository(
+      store,
+      { key: STORAGE_KEYS.scans, version: 1, schema: ScanRecordSchema },
       clock,
     ),
     secrets: new SecretsRepository(

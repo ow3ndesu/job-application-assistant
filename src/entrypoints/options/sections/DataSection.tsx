@@ -44,11 +44,12 @@ export function DataSection(props: { onChanged: () => void }) {
         </li>
         <li className="row">
           <span>
-            Saved jobs and match results{s && ` · ${s.jobs} job(s), ${s.matches} match(es)`}
+            Saved jobs, match results and scan history
+            {s && ` · ${s.jobs} job(s), ${s.matches} match(es)`}
           </span>
           <ConfirmButton
             label="Delete jobs"
-            confirmLabel="Delete jobs and matches"
+            confirmLabel="Delete jobs, matches and history"
             testId="delete-jobs"
             onConfirm={() => run(dataManagement.deleteJobs, 'Jobs and matches deleted.')}
           />
