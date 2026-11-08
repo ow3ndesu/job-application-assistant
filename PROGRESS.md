@@ -1,10 +1,10 @@
 # Development Progress
 
 ## Current pointer
-T10 — Profile improvement proposals
+T11 — Security, privacy, and permission review
 
 ## Overall status
-IN PROGRESS — T00–T09 complete. You can scan pages, filter by keywords, check AI fit, draft evidence-checked applications, approve them, apply on the site yourself, and track the outcome. (`master` holds T01–T07; T08 is on `feat/t08-application-drafts`; T09 is on `feat/t09-application-assistance`.)
+IN PROGRESS — T00–T10 complete. All user-facing MVP features exist: scan, keyword funnel, AI fit, evidence-checked drafts, human-approved manual applying, and approval-gated profile improvements. (`master` holds T01–T07; T08–T10 are on stacked `feat/t08…`, `feat/t09…` and `feat/t10-profile-proposals` branches.)
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
@@ -17,12 +17,28 @@ IN PROGRESS — T00–T09 complete. You can scan pages, filter by keywords, chec
 - T07 — Job matching and explanation (2026-11-08)
 - T08 — Application draft generation (2026-11-08)
 - T09 — Human-approved application assistance (2026-11-08)
+- T10 — Profile improvement proposals (2026-11-08)
 
 ## Current task notes
-- T10 not started. Building blocks:
-  - The profile repo already keeps versions and supports restore (T02/T03).
-  - T07/T08 already collect `unsupportedClaims` / `removedStatements`. These are candidates to *ask the user about*, never facts to add.
-  - Proposals must be diffs the user accepts, rejects or edits, with source notes. Nothing is written without approval (CLAUDE.md T10).
+- T11 not started. It is a review task (permissions, key handling, data flow, prompt injection/XSS/unsafe rendering, storage validation, privacy and deletion docs, store policies, dependency hygiene). Expect mostly documentation plus fixes for whatever the audit finds.
+- T10 result:
+  - **Rule:** only facts you supply or explicitly confirm can become proposals, and nothing is written to the profile until you review a diff and save a new version.
+  - **Schema:** `ProfileProposal { section, text, phrasedBy: ai|user, sources[{kind: user_note|draft_answer|confirmed_claim, label, quote, at, ref?}] (min 1), status: pending|accepted|rejected|applied, appliedToVersion? }`. New `profileProposals` collection; "Delete profile" also clears proposals.
+  - **`src/profile-updates/`:**
+    - `markdown.ts`: list sections; append bullets under a matching heading or create the heading; skip duplicates; never change or remove existing text; line diff.
+    - `candidates.ts`: your own non-sensitive written draft answers, and AI claims (unsupported or removed) as unconfirmed questions. Excludes anything already in the profile or already used.
+    - `verify.ts` (AI path): each addition needs a verbatim quote from your notes; numbers and credential words must appear in those quotes (no inferred years, degrees or certifications); sensitive data and duplicates are rejected.
+    - `propose.ts`: AI organises your notes into pending proposals (data-block prompt, verified). Never writes the profile.
+    - `workflow.ts`: create (your wording), edit (becomes your wording and goes back to pending), accept, reject, preview of accepted only, mark applied with the version.
+  - **Background:** `ai/propose-profile-additions {notes ≤ 5000}` stores pending proposals only.
+  - **UI** (Settings → Profile → **Improve your profile**):
+    - "Tell us more" box with a section picker; **Add as written** (no AI, works without credits) and **Suggest additions with AI**, with a "not suggested" list and reasons
+    - "From answers you wrote" → Use
+    - "Is this true about you?" → tick, then Add, or "Not true"
+    - proposals list with editable section and text, source notes, Accept, Reject, Save edit
+    - **Review N accepted change(s)** → diff → **Save as new profile version**
+    - past decisions
+  - Rollback: the existing "Previous versions" restore.
 - T09 result (scope confirmed by the user, 2026-11-08). Read-only on OnlineJobs.ph means no form filling or submission; T09 is the human-approved manual workflow:
   - **`src/drafting/workflow.ts`** (pure, tested). States:
     - `needs_review`/`draft` → **approve** → `approved` → **user reports submitted** → `submitted`
@@ -335,9 +351,27 @@ IN PROGRESS — T00–T09 complete. You can scan pages, filter by keywords, chec
   - Test added; `pnpm check` 242 passed; `e2e-t07b` 14/14.
 
 ## Last completed task
-- T09 — Human-approved application assistance (2026-11-08)
+- T10 — Profile improvement proposals (2026-11-08)
 
-## Last validation — T09 (2026-11-08)
+## Last validation — T10 (2026-11-08)
+- `pnpm check` exit 0. Vitest: 283 tests passed, 5 skipped (live).
+  - Markdown: sections listed; bullets appended at the end of the matching section (case-insensitive) with nothing else changed; a missing section is created; duplicates skipped; empty profile handled; the diff shows only added lines.
+  - Verification of AI-phrased additions: kept only when quoted from your text; rejected for an unquoted fact, a new number ("3 years" when you wrote "1 year"), a new credential ("certified"), sensitive pay info, or something already in the profile.
+  - Candidates: only your own non-sensitive written answers (the salary answer excluded); AI claims offered only as unconfirmed and deduped; used or dismissed candidates hidden.
+  - `proposeFromNotes`: pending, schema-valid proposals with `user_note` sources; an unquoted "Bachelor degree" is rejected; **the profile is byte-identical afterwards**; notes can't fake data blocks; empty notes make no AI call; provider errors pass through.
+  - Workflow: user-worded proposals; **only accepted ones are applied**; editing an AI proposal makes it your wording and resets it to pending; applied proposals record the version and are frozen. With storage: apply creates v2, and v1 restores.
+  - Background `propose-profile-additions`: stores PENDING proposals only and the profile is untouched; no profile, no key or empty notes are refused; web-page senders are rejected.
+- Headless Chrome 157 end-to-end (`e2e-t10`; Settings → Profile; the service worker's Anthropic API calls intercepted with canned output): **16/16 passed**.
+  - Candidates: your own answer offered (salary excluded); AI claims offered as "Is this true?"; "Add" disabled until ticked; "Not true" recorded as rejected and the claim no longer offered.
+  - Proposals: "Add as written" works; an AI suggestion adding "Certified" was dropped with a reason; the request kept your notes in a data block; 5 pending proposals with sources.
+  - **The profile was unchanged until saving.** Accept, reject and edit-then-accept all worked.
+  - The diff showed only + lines for accepted facts. Saving created v2 with facts in the right sections and no rejected or unconfirmed claims; v1 kept in history; applied proposals record v2; restoring v1 created v3 with the original text.
+  - 0 console errors.
+- **Regression found and fixed:** the T03 walkthrough failed (27/33) after T10. `ProfileSuggestions` and `ProfileEditor` were sibling components with the same React `key` (the profile version), so after a save React rendered the editor three times. The suggestions panel now has its own key (`suggestions-N`); T03 is back to 33/33. (The production build hides React's duplicate-key warning. Idea for T12: also run the E2E suites against a dev build.)
+- Other regressions: T04 7/7, T06 19/19 (E2E build), T07 18/18, T07b 14/14, T08 16/16, T09 17/17. Release manifest: no host permissions.
+- Not verified: real model output (needs API credits).
+
+## Validation — T09 (2026-11-08)
 - `pnpm check` exit 0. Vitest: 257 tests passed, 5 skipped (live).
   - New workflow tests:
     - review ack required; leave-blank ack required; an empty message can't be approved

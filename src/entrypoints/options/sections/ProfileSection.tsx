@@ -10,6 +10,7 @@ import {
 import { ConfirmButton, describeError, LoadError, Message, Section } from '@/ui/components';
 import { repos } from '@/ui/services';
 import { useResource } from '@/ui/useResource';
+import { ProfileSuggestions } from './ProfileSuggestions';
 
 const loadProfile = async () => ({
   current: await repos.profile.getCurrent(),
@@ -56,6 +57,15 @@ export function ProfileSection() {
         />
       )}
       {notice && <Message kind={notice.kind}>{notice.text}</Message>}
+      {state.status === 'ready' && (
+        <ProfileSuggestions
+          // Distinct from the editor's key: sibling keys must be unique, or React
+          // duplicates elements on update.
+          key={`suggestions-${state.data.current?.version ?? 0}`}
+          profile={state.data.current}
+          onProfileChanged={reload}
+        />
+      )}
     </Section>
   );
 }

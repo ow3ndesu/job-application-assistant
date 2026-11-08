@@ -1,4 +1,5 @@
-import type { Clock } from '@/core/domain';
+import { randomIds, type Clock, type IdGenerator } from '@/core/domain';
+import { proposeFromNotes as defaultProposeFromNotes } from '@/profile-updates/propose';
 import type { Settings } from '@/core/schemas';
 import { draftId } from '@/core/schemas';
 import { draftApplication as defaultDraftApplication } from '@/drafting/draft-application';
@@ -9,13 +10,18 @@ import type { Repositories } from '@/storage';
 import { BackgroundRequestSchema, type BackgroundError, type BackgroundResponse } from './protocol';
 
 export interface HandlerDeps {
-  repos: Pick<Repositories, 'settings' | 'secrets' | 'jobs' | 'matches' | 'profile' | 'drafts'>;
+  repos: Pick<
+    Repositories,
+    'settings' | 'secrets' | 'jobs' | 'matches' | 'profile' | 'drafts' | 'profileProposals'
+  >;
   createProvider: (settings: Settings, apiKey: string) => AIProvider;
   /** Origin prefix of this extension's own pages, e.g. chrome-extension://<id>/ */
   extensionOrigin: string;
   clock: Clock;
+  ids?: IdGenerator;
   matchJob?: typeof defaultMatchJob;
   draftApplication?: typeof defaultDraftApplication;
+  proposeFromNotes?: typeof defaultProposeFromNotes;
   timeoutMs?: number;
   /** Overall limit for a match request (includes SDK retries). */
   matchTimeoutMs?: number;
@@ -43,6 +49,7 @@ const fail = (
 export function createBackgroundHandler(deps: HandlerDeps) {
   const matchJob = deps.matchJob ?? defaultMatchJob;
   const draftApplication = deps.draftApplication ?? defaultDraftApplication;
+  const proposeFromNotes = deps.proposeFromNotes ?? defaultProposeFromNotes;
   /** One evaluation per job at a time. */
   const inFlight = new Set<string>();
 
@@ -142,6 +149,41 @@ export function createBackgroundHandler(deps: HandlerDeps) {
             return { ok: true, draft: saved };
           } finally {
             inFlight.delete(key);
+          }
+        }
+
+        case 'ai/propose-profile-additions': {
+          const profile = await deps.repos.profile.getCurrent();
+          if (!profile || !profile.content.trim()) {
+            return fail('no_profile', 'Add your applicant profile in Settings first.');
+          }
+          if (!request.notes.trim())
+            return fail('bad_message', 'Write what you want to add first.');
+          const apiKey = await deps.repos.secrets.getAnthropicApiKeyForProvider();
+          if (!apiKey) return { ok: false, error: aiError('missing_key') };
+          if (inFlight.has('proposals'))
+            return fail('busy', 'Suggestions are already being prepared.');
+
+          inFlight.add('proposals');
+          try {
+            const provider = deps.createProvider(await deps.repos.settings.get(), apiKey);
+            const result = await proposeFromNotes(
+              provider,
+              profile,
+              request.notes,
+              deps.clock,
+              deps.ids ?? randomIds,
+              AbortSignal.timeout(deps.matchTimeoutMs ?? 300_000),
+            );
+            if (!result.ok)
+              return fail(result.error.kind, result.error.message, result.error.detail);
+            // Stored as PENDING proposals only; the profile itself is never written here.
+            const saved = result.value.proposals.length
+              ? await deps.repos.profileProposals.upsertMany(result.value.proposals)
+              : [];
+            return { ok: true, proposals: saved, rejected: result.value.rejected };
+          } finally {
+            inFlight.delete('proposals');
           }
         }
       }

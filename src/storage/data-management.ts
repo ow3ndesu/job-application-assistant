@@ -3,8 +3,11 @@ import type { Repositories } from './repositories';
 /** User-facing delete/reset operations, grouped by what the user sees. */
 export function createDataManagement(repos: Repositories) {
   return {
-    /** Profile and all previous versions. */
-    deleteProfile: () => repos.profile.clear(),
+    /** Profile, all previous versions, and profile proposals. */
+    deleteProfile: async () => {
+      await repos.profile.clear();
+      await repos.profileProposals.clear();
+    },
     /** Saved jobs, their match results (matches reference jobs) and scan history. */
     deleteJobs: async () => {
       await repos.jobs.clear();

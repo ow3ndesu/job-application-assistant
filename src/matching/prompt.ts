@@ -17,7 +17,8 @@ Rules:
 6. rationale: 2-4 plain sentences. Do not address the employer.
 Keep each list item short (one sentence).`;
 
-const DATA_TAGS = /<\s*\/?\s*(applicant_profile|job_posting|application_questions)\b[^>]*>/gi;
+const DATA_TAGS =
+  /<\s*\/?\s*(applicant_profile|job_posting|application_questions|existing_sections|user_input)\b[^>]*>/gi;
 
 /** Removes anything that looks like our data-block tags so data cannot "close" its block. */
 export function neutralizeTags(text: string): string {

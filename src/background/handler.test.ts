@@ -297,3 +297,87 @@ describe('background handler: ai/draft-application', () => {
     expect(r).toMatchObject({ ok: false, error: { kind: 'bad_message' } });
   });
 });
+
+describe('background handler: ai/propose-profile-additions', () => {
+  const clock = { now: () => new Date('2026-11-08T00:00:00.000Z') };
+
+  async function setupProposals(opts: { key?: boolean; profile?: boolean } = {}) {
+    const repos = createRepositories(new MemoryKeyValueStore());
+    if (opts.key !== false) await repos.secrets.setAnthropicApiKey('test-key-not-real');
+    if (opts.profile !== false) await repos.profile.saveContent('# Me\n## Skills\n- Zendesk');
+    const proposeFromNotes = vi.fn(() =>
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          proposals: [
+            {
+              id: 'prop-1',
+              section: 'Skills',
+              text: 'HubSpot',
+              phrasedBy: 'ai' as const,
+              sources: [
+                {
+                  kind: 'user_note' as const,
+                  label: 'You wrote',
+                  quote: 'I used HubSpot',
+                  at: '2026-11-08T00:00:00.000Z',
+                },
+              ],
+              status: 'pending' as const,
+              createdAt: '2026-11-08T00:00:00.000Z',
+            },
+          ],
+          rejected: [{ text: 'PhD', reason: 'Not found in what you wrote.' }],
+        },
+      }),
+    );
+    const handle = createBackgroundHandler({
+      repos,
+      createProvider: vi.fn(() => fakeProvider({ ok: true, value: { model: 'm' } })),
+      extensionOrigin: ORIGIN,
+      clock,
+      proposeFromNotes: proposeFromNotes as never,
+    });
+    return { handle, repos, proposeFromNotes };
+  }
+
+  it('stores suggestions as PENDING proposals and never writes the profile', async () => {
+    const { handle, repos } = await setupProposals();
+    const before = JSON.stringify(await repos.profile.getCurrent());
+    const r = await handle(
+      { type: 'ai/propose-profile-additions', notes: 'I used HubSpot' },
+      fromOptions,
+      OWN_ID,
+    );
+    expect(r).toMatchObject({
+      ok: true,
+      proposals: [{ id: 'prop-1', status: 'pending' }],
+      rejected: [{ text: 'PhD' }],
+    });
+    expect((await repos.profileProposals.get('prop-1'))?.status).toBe('pending');
+    expect(JSON.stringify(await repos.profile.getCurrent())).toBe(before);
+  });
+
+  it.each([
+    ['no profile', { profile: false }, 'I used HubSpot', 'no_profile'],
+    ['no API key', { key: false }, 'I used HubSpot', 'missing_key'],
+    ['empty notes', {}, '   ', 'bad_message'],
+  ] as const)('%s → %s', async (_l, opts, notes, kind) => {
+    const { handle, proposeFromNotes } = await setupProposals(opts);
+    expect(
+      await handle({ type: 'ai/propose-profile-additions', notes }, fromOptions, OWN_ID),
+    ).toMatchObject({ ok: false, error: { kind } });
+    expect(proposeFromNotes).not.toHaveBeenCalled();
+  });
+
+  it('web pages cannot request profile changes', async () => {
+    const { handle, proposeFromNotes } = await setupProposals();
+    const r = await handle(
+      { type: 'ai/propose-profile-additions', notes: 'x' },
+      { id: OWN_ID, url: 'https://evil.example/' },
+      OWN_ID,
+    );
+    expect(r).toMatchObject({ ok: false, error: { kind: 'unauthorized_sender' } });
+    expect(proposeFromNotes).not.toHaveBeenCalled();
+  });
+});

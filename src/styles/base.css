@@ -585,3 +585,68 @@ button.link-button {
 .badge + .badge {
   margin-left: 6px;
 }
+
+/* Profile suggestions */
+.profile-suggestions {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.profile-suggestions h4 {
+  margin: 14px 0 6px;
+  font-size: 0.9rem;
+}
+
+.proposal-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.proposal .inline-form {
+  margin-top: 0;
+}
+
+.proposal label.grow {
+  flex: 1;
+  min-width: 200px;
+}
+
+.proposal label.grow input {
+  width: 100%;
+}
+
+.source-notes {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted);
+}
+
+pre.diff {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 0.85rem;
+}
+
+.diff-add {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  display: block;
+}
+
+.diff-remove {
+  background: var(--err-bg);
+  display: block;
+}
+
+.diff-same {
+  display: block;
+  color: var(--muted);
+}

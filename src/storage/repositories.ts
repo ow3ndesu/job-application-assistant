@@ -13,6 +13,7 @@ import {
   SavedJobSchema,
   ScanRecordSchema,
   migrateTargetSitesV1toV2,
+  ProfileProposalSchema,
   ProfileStateSchema,
   SearchKeywordsSchema,
   SecretsSchema,
@@ -35,6 +36,7 @@ export const STORAGE_KEYS = {
   matches: 'matches',
   drafts: 'drafts',
   scans: 'scans',
+  profileProposals: 'profileProposals',
   secrets: 'secrets',
 } as const;
 
@@ -112,6 +114,11 @@ export function createRepositories(store: KeyValueStore, deps: RepositoryDeps = 
     scans: new CollectionRepository(
       store,
       { key: STORAGE_KEYS.scans, version: 1, schema: ScanRecordSchema },
+      clock,
+    ),
+    profileProposals: new CollectionRepository(
+      store,
+      { key: STORAGE_KEYS.profileProposals, version: 1, schema: ProfileProposalSchema },
       clock,
     ),
     secrets: new SecretsRepository(
