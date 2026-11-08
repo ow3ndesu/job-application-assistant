@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { JobMatch, SavedJob } from '@/core/schemas';
 import { sendToBackground } from '@/ui/background-client';
+import { ErrorNotice } from '@/ui/components';
 
 const fmt = (iso: string) => new Date(iso).toLocaleString();
 
@@ -23,7 +24,7 @@ export function MatchPanel(props: {
 }) {
   const { job, latest } = props;
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; detail?: string | undefined } | null>(null);
 
   async function run() {
     setBusy(true);
@@ -31,7 +32,7 @@ export function MatchPanel(props: {
     const r = await sendToBackground({ type: 'ai/match-job', jobId: job.id });
     setBusy(false);
     if (r.ok) props.onMatched(r.match);
-    else setError(r.error.message);
+    else setError({ message: r.error.message, detail: r.error.detail });
   }
 
   const profileChanged =
@@ -57,11 +58,7 @@ export function MatchPanel(props: {
           ? 'Add your profile in Settings to check fit.'
           : `Sends this job's text and your profile (version ${props.currentProfileVersion}) to Anthropic to estimate the fit.`}
       </p>
-      {error && (
-        <p className="message error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <ErrorNotice message={error.message} detail={error.detail} />}
 
       {latest && (
         <div className="match-result" data-testid="match-result">

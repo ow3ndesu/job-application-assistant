@@ -1,21 +1,30 @@
 import { useMemo, useState } from 'react';
 import { APP_NAME } from '@/core/app-info';
-import type { JobMatch, SavedJob, ScanRecord, SearchKeywords, TargetSite } from '@/core/schemas';
+import type {
+  ApplicationDraft,
+  JobMatch,
+  SavedJob,
+  ScanRecord,
+  SearchKeywords,
+  TargetSite,
+} from '@/core/schemas';
 import { applyKeywordFunnel, jobSearchText } from '@/core/use-cases/keyword-funnel';
 import { ConfirmButton, describeError, LoadError, Message, Section } from '@/ui/components';
 import { JobLink } from '@/ui/JobLink';
 import { repos } from '@/ui/services';
 import { useResource } from '@/ui/useResource';
+import { DraftPanel } from './DraftPanel';
 import { MatchPanel } from './MatchPanel';
 
 const loadAll = async () => {
-  const [jobs, scans, keywords, sites, matches, profile] = await Promise.all([
+  const [jobs, scans, keywords, sites, matches, profile, drafts] = await Promise.all([
     repos.jobs.list(),
     repos.scans.list(),
     repos.searchKeywords.get(),
     repos.targetSites.list(),
     repos.matches.list(),
     repos.profile.getCurrent(),
+    repos.drafts.list(),
   ]);
   const profileVersion = profile?.content.trim() ? profile.version : null;
   return {
@@ -24,9 +33,24 @@ const loadAll = async () => {
     keywords,
     sites: sites.items,
     matches: latestMatches(matches.items, profileVersion),
+    drafts: latestByProfileVersion(drafts.items, profileVersion),
     profileVersion,
   };
 };
+
+/** Per job: the draft for the current profile version if any, else the newest. */
+function latestByProfileVersion(
+  drafts: ApplicationDraft[],
+  profileVersion: number | null,
+): Map<string, ApplicationDraft> {
+  const byJob = new Map<string, ApplicationDraft>();
+  for (const d of [...drafts].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))) {
+    const prev = byJob.get(d.jobId);
+    const prevIsCurrent = prev?.profileVersion === profileVersion;
+    if (!prev || !prevIsCurrent || d.profileVersion === profileVersion) byJob.set(d.jobId, d);
+  }
+  return byJob;
+}
 
 /** Per job: the match for the current profile version if any, else the newest. */
 function latestMatches(matches: JobMatch[], profileVersion: number | null): Map<string, JobMatch> {
@@ -80,6 +104,7 @@ export function App() {
             keywords={state.data.keywords}
             sites={state.data.sites}
             matches={state.data.matches}
+            drafts={state.data.drafts}
             profileVersion={state.data.profileVersion}
             onChanged={reload}
           />
@@ -96,6 +121,7 @@ function JobList(props: {
   keywords: SearchKeywords;
   sites: TargetSite[];
   matches: Map<string, JobMatch>;
+  drafts: Map<string, ApplicationDraft>;
   profileVersion: number | null;
   onChanged: () => void;
 }) {
@@ -205,6 +231,7 @@ function JobList(props: {
               keywords={props.keywords}
               sourceLabel={sourceLabel(job.source)}
               match={props.matches.get(job.id)}
+              draft={props.drafts.get(job.id)}
               profileVersion={props.profileVersion}
               onMatched={props.onChanged}
               onRemove={async () => {
@@ -230,6 +257,7 @@ function JobRow(props: {
   keywords: SearchKeywords;
   sourceLabel: string;
   match: JobMatch | undefined;
+  draft: ApplicationDraft | undefined;
   profileVersion: number | null;
   onMatched: () => void;
   onRemove: () => Promise<void>;
@@ -314,6 +342,13 @@ function JobRow(props: {
               latest={props.match}
               currentProfileVersion={props.profileVersion}
               onMatched={props.onMatched}
+            />
+            <DraftPanel
+              key={props.draft ? props.draft.id + props.draft.updatedAt : 'none'}
+              job={job}
+              draft={props.draft}
+              currentProfileVersion={props.profileVersion}
+              onChanged={props.onMatched}
             />
           </div>
         )}

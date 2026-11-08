@@ -7,6 +7,7 @@ import {
   emptyProfileState,
   emptySecrets,
   JobMatchSchema,
+  migrateDraftsV1toV2,
   migrateJobsV1toV2,
   migrateMatchesV1toV2,
   SavedJobSchema,
@@ -100,7 +101,12 @@ export function createRepositories(store: KeyValueStore, deps: RepositoryDeps = 
     ),
     drafts: new CollectionRepository(
       store,
-      { key: STORAGE_KEYS.drafts, version: 1, schema: ApplicationDraftSchema },
+      {
+        key: STORAGE_KEYS.drafts,
+        version: 2,
+        schema: ApplicationDraftSchema,
+        migrations: { 1: migrateDraftsV1toV2 },
+      },
       clock,
     ),
     scans: new CollectionRepository(

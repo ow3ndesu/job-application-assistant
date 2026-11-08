@@ -176,3 +176,124 @@ describe('background handler: ai/match-job', () => {
     expect(matchJob).not.toHaveBeenCalled();
   });
 });
+
+describe('background handler: ai/draft-application', () => {
+  const clock = { now: () => new Date('2026-11-08T00:00:00.000Z') };
+  const draftFor = (jobId: string, version: number) => ({
+    id: `${jobId}@v${version}`,
+    jobId,
+    profileId: 'p',
+    profileVersion: version,
+    coverLetter: 'Hello.',
+    coverLetterEvidence: [],
+    removedStatements: [],
+    answers: [],
+    postInstructions: [],
+    injectionSuspected: false,
+    editedByUser: false,
+    status: 'draft' as const,
+    jobContentHash: 'abc123',
+    model: 'claude-opus-5-5',
+    createdAt: '2026-11-08T00:00:00.000Z',
+    updatedAt: '2026-11-08T00:00:00.000Z',
+  });
+
+  async function setupDraft(opts: { key?: boolean; profile?: boolean; job?: boolean } = {}) {
+    const repos = createRepositories(new MemoryKeyValueStore());
+    if (opts.key !== false) await repos.secrets.setAnthropicApiKey('test-key-not-real');
+    if (opts.profile !== false) await repos.profile.saveContent('# Me\n- 3 years as a VA');
+    if (opts.job !== false) await repos.jobs.upsert(sampleSavedJob());
+    const draftApplication = vi.fn(
+      (_p: unknown, job: { id: string }, profile: { version: number }, questions: string[]) =>
+        Promise.resolve({
+          ok: true as const,
+          value: {
+            ...draftFor(job.id, profile.version),
+            answers: questions.map((q) => ({
+              question: q,
+              answer: '',
+              status: 'unknown' as const,
+              evidence: [],
+            })),
+          },
+        }),
+    );
+    const handle = createBackgroundHandler({
+      repos,
+      createProvider: vi.fn(() => fakeProvider({ ok: true, value: { model: 'm' } })),
+      extensionOrigin: ORIGIN,
+      clock,
+      draftApplication: draftApplication as never,
+    });
+    return { handle, repos, draftApplication };
+  }
+
+  it('creates and stores a draft tied to the job and profile version', async () => {
+    const { handle, repos } = await setupDraft();
+    const r = await handle(
+      { type: 'ai/draft-application', jobId: 'job-1', questions: ['Why us?'] },
+      fromOptions,
+      OWN_ID,
+    );
+    expect(r).toMatchObject({
+      ok: true,
+      draft: { id: 'job-1@v1', jobId: 'job-1', profileVersion: 1 },
+    });
+    expect((await repos.drafts.get('job-1@v1'))?.answers[0]?.question).toBe('Why us?');
+  });
+
+  it.each([
+    ['no profile', { profile: false }, 'no_profile'],
+    ['unknown job', { job: false }, 'job_not_found'],
+    ['no API key', { key: false }, 'missing_key'],
+  ] as const)('%s → %s', async (_l, opts, kind) => {
+    const { handle, draftApplication } = await setupDraft(opts);
+    expect(
+      await handle(
+        { type: 'ai/draft-application', jobId: 'job-1', questions: [] },
+        fromOptions,
+        OWN_ID,
+      ),
+    ).toMatchObject({ ok: false, error: { kind } });
+    expect(draftApplication).not.toHaveBeenCalled();
+  });
+
+  it('does not overwrite a draft the user edited unless confirmed', async () => {
+    const { handle, repos, draftApplication } = await setupDraft();
+    await repos.drafts.upsert({
+      ...draftFor('job-1', 1),
+      coverLetter: 'My edits',
+      editedByUser: true,
+    });
+    const blocked = await handle(
+      { type: 'ai/draft-application', jobId: 'job-1', questions: [] },
+      fromOptions,
+      OWN_ID,
+    );
+    expect(blocked).toMatchObject({ ok: false, error: { kind: 'draft_edited' } });
+    expect((await repos.drafts.get('job-1@v1'))?.coverLetter).toBe('My edits');
+    expect(draftApplication).not.toHaveBeenCalled();
+
+    const replaced = await handle(
+      { type: 'ai/draft-application', jobId: 'job-1', questions: [], replaceEdited: true },
+      fromOptions,
+      OWN_ID,
+    );
+    expect(replaced.ok).toBe(true);
+    expect((await repos.drafts.get('job-1@v1'))?.coverLetter).toBe('Hello.');
+  });
+
+  it('rejects oversized question lists', async () => {
+    const { handle } = await setupDraft();
+    const r = await handle(
+      {
+        type: 'ai/draft-application',
+        jobId: 'job-1',
+        questions: Array.from({ length: 51 }, () => 'q'),
+      },
+      fromOptions,
+      OWN_ID,
+    );
+    expect(r).toMatchObject({ ok: false, error: { kind: 'bad_message' } });
+  });
+});

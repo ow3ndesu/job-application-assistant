@@ -37,6 +37,7 @@ export type AIErrorKind =
   | 'timeout'
   | 'cancelled'
   | 'bad_request'
+  | 'insufficient_credits'
   | 'refused'
   | 'truncated'
   | 'malformed_response';
@@ -47,6 +48,8 @@ export interface AIError {
   message: string;
   retryAfterSeconds?: number;
   requestId?: string;
+  /** Provider's own error text (redacted, may be technical). Shown only as "technical details". */
+  detail?: string;
 }
 
 export interface AIUsage {
@@ -70,7 +73,10 @@ const MESSAGES: Record<AIErrorKind, string> = {
   network: 'Could not reach Anthropic. Check your internet connection.',
   timeout: 'The request took too long and was stopped. Try again.',
   cancelled: 'The request was cancelled.',
-  bad_request: 'The request was rejected as invalid. This is likely a bug in the extension.',
+  insufficient_credits:
+    'Your Anthropic account has no remaining credits. Add credits in the Claude Console (Settings → Billing), then try again.',
+  bad_request:
+    'Anthropic rejected the request as invalid. See the technical details below; this is likely a bug in the extension.',
   refused: 'The model declined this request.',
   truncated: 'The response was cut off before it finished. Try again.',
   malformed_response:

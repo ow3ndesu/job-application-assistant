@@ -2,7 +2,14 @@ import { useState, type FormEvent } from 'react';
 import { ANTHROPIC_MODEL_OPTIONS, DEFAULT_ANTHROPIC_MODEL } from '@/core/schemas';
 import { validateApiKeyInput } from '@/core/use-cases/api-key';
 import { sendToBackground } from '@/ui/background-client';
-import { ConfirmButton, describeError, LoadError, Message, Section } from '@/ui/components';
+import {
+  ConfirmButton,
+  describeError,
+  ErrorNotice,
+  LoadError,
+  Message,
+  Section,
+} from '@/ui/components';
 import { repos } from '@/ui/services';
 import { useResource } from '@/ui/useResource';
 
@@ -11,7 +18,7 @@ const loadProvider = async () => ({
   hasKey: await repos.secrets.hasAnthropicApiKey(),
 });
 
-type Notice = { kind: 'error' | 'success'; text: string } | null;
+type Notice = { kind: 'error' | 'success'; text: string; detail?: string | undefined } | null;
 
 export function ProviderSection() {
   const { state, reload } = useResource(loadProvider);
@@ -28,7 +35,7 @@ export function ProviderSection() {
     setNotice(
       result.ok
         ? { kind: 'success', text: `Key works. Model ${result.model} is available.` }
-        : { kind: 'error', text: result.error.message },
+        : { kind: 'error', text: result.error.message, detail: result.error.detail },
     );
   }
 
@@ -186,7 +193,12 @@ export function ProviderSection() {
           </details>
         </>
       )}
-      {notice && <Message kind={notice.kind}>{notice.text}</Message>}
+      {notice &&
+        (notice.kind === 'error' ? (
+          <ErrorNotice message={notice.text} detail={notice.detail} />
+        ) : (
+          <Message kind={notice.kind}>{notice.text}</Message>
+        ))}
     </Section>
   );
 }

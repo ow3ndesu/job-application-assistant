@@ -1,10 +1,10 @@
 # Development Progress
 
 ## Current pointer
-T08 — Application draft generation
+T09 — Human-approved application assistance
 
 ## Overall status
-IN PROGRESS — T00–T07 complete. You can scan pages, filter by keywords, browse saved jobs, and get an evidence-checked AI fit estimate per job.
+IN PROGRESS — T00–T08 complete. You can scan pages, filter by keywords, check AI fit, and draft evidence-checked applications to edit, copy or download. (`master` holds T01–T07; T08 is on `feat/t08-application-drafts`.)
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
@@ -15,15 +15,38 @@ IN PROGRESS — T00–T07 complete. You can scan pages, filter by keywords, brow
 - T05 — Site adapter framework and OnlineJobs.ph discovery (2026-11-08)
 - T06 — Search orchestration and results UI (2026-11-08)
 - T07 — Job matching and explanation (2026-11-08)
+- T08 — Application draft generation (2026-11-08)
 
 ## Current task notes
-- T08 not started. Reuse the T07 patterns:
-  - The data-block prompt with `neutralizeTags`.
-  - Code-side verification of every factual claim against verbatim profile quotes (`verifyAgainstProfile` / `normalizeForQuote`).
-  - The `injectionSuspected` flag.
-  - A background request type plus a per-item in-flight guard.
-  - The opt-in live test pattern.
-  - Application questions must come only from visible page structures. Under the read-only decision there is no form filling on OnlineJobs.ph; drafts are for copy/export.
+- **T09 under the read-only decision (Q1, option a):** on OnlineJobs.ph the extension never fills or submits forms. CLAUDE.md T09 itself requires "a manual workflow when automation is unavailable or disallowed", so for OnlineJobs.ph T09 reduces to:
+  - a review/approval step for a draft ("Ready to use" / approved)
+  - the manual copy/apply workflow (opening the job post to apply yourself)
+  - a self-reported status ("I applied" → `submitted` is never claimed by the extension; it would be "you marked as applied")
+  - Form filling would only ever apply to sites whose automation rules allow it, and none are supported yet.
+  - Scope confirmed by the user ("let's proceed", 2026-11-08).
+- T08 result:
+  - **Question source:** you paste the application form's questions (one per line). The OnlineJobs.ph apply form needs a login and was not inspected, so no form fields are guessed. Instructions found in the job post (e.g. a required first word) are extracted by the AI as `postInstructions`, shown with a caution, and never applied automatically.
+  - `src/drafting/`:
+    - **`sensitive.ts`:** deterministic classifier for legal declarations or consent, demographics, work authorization, criminal history or clearance, health, pay expectations or history, and ID or financial details. **Sensitive questions are never sent to the AI and never answered**; they're forced blank with a notice.
+    - **`prompt.ts`:** rules only in `system`; profile, job and questions in data blocks (`neutralizeTags` now also covers `<application_questions>`). The rules forbid inventing or inflating anything, require verbatim quotes for factual paragraphs and answers, and allow "unknown".
+    - **`verify.ts`:**
+      - Cover-letter paragraphs marked factual, or that look factual (numbers, years, experience, credentials, skills, results, availability; the `looksFactual` heuristic), are kept only with at least one verified profile quote. Others are removed and listed in `removedStatements`.
+      - Answers: verified, or non-factual wording (kept with a "check it reflects you" note), or else `unknown` and blank. Sensitive answers are always blank.
+    - **`draft-application.ts`:** cleans questions (≤ 20, ≤ 500 chars, deduped); sends only non-sensitive questions, numbered, and maps answers back to the original order; verifies; sets the status (`needs_review` while anything needs you) and `injectionSuspected`. Never touches the profile.
+    - **`edit.ts`:**
+      - `applyDraftEdits`: everything is editable; changed answers become `user_written` (sensitive ones keep their category); cleared answers go back to needing an answer.
+      - `draftToText` / `draftFilename` for copy and download; unanswered questions are clearly marked.
+  - **`ApplicationDraft` v2:**
+    - `coverLetter`, `coverLetterEvidence[{paragraph, evidence[min 1]}]`, `removedStatements`, `answers[{question, answer, status, evidence, sensitiveCategory?, note?}]`, `postInstructions`, `injectionSuspected`, `editedByUser`, `status`, `jobContentHash`, `model`.
+    - Id is `jobId@vN`, linking the draft to the job and the profile version.
+    - `drafts` storage moved to v2 with a migration (v1 answers become `user_written`).
+  - **Background:** `ai/draft-application {jobId, questions ≤ 50, replaceEdited?}`. Errors: `no_profile`, `job_not_found`, `missing_key`, `busy`, and **`draft_edited`** (a draft you edited is never overwritten without explicit confirmation).
+  - **Saved jobs → Details → Application draft panel:**
+    - questions box (warns how many sensitive questions won't be sent); Draft / Draft again; "Replace my edited draft" with a two-step confirm
+    - status line; profile-changed and injection warnings; job post instructions with a caution
+    - editable message, with "Profile facts used" and "Removed: not supported by your profile"
+    - editable answers with status badges, notes and evidence
+    - Save changes, Copy message, Copy all, Download .txt; "Nothing is sent to the employer…"
 - T07 result:
   - `src/matching/`:
     - **`ai-output.ts`:** the model's structured-output schema (`score`, `rationale`, `strengths[{claim, profileQuotes}]`, `gaps`, `uncertainties`, `suspiciousInstructionsInJob`). The SDK turns it into a strict JSON schema and moves unsupported constraints into descriptions; our own Zod check runs afterwards.
@@ -267,10 +290,59 @@ IN PROGRESS — T00–T07 complete. You can scan pages, filter by keywords, brow
   - To verify with real pages: save the pages yourself ("Save page as… → HTML only") as `jobsearch.html` / `job-detail.html` / `login.html` in a folder, then run `OLJ_LIVE_DIR=<folder> pnpm vitest run src/sites/onlinejobs/adapter.live.test.ts`.
 - Note: `corepack enable` needs admin rights here. The dev guide (T01) should document `npm install -g pnpm` as the fallback.
 
-## Last completed task
-- T07 — Job matching and explanation (2026-11-08)
+## Bug fix — "The request was rejected as invalid" on Check fit (reported by user, 2026-11-08)
+- **Symptom:** "Check fit with AI" failed with `bad_request` (HTTP 400); Test key worked.
+- **Most likely cause:**
+  - Generation requests on Opus and Sonnet carried the server-side refusal-fallback beta (`anthropic-beta: server-side-fallback-2026-07-01` + `fallbacks: "default"`).
+  - Anthropic's error reference says a beta not enabled for the organization returns a 400 ("Unexpected value(s) … for the `anthropic-beta` header").
+  - Test key (`GET /v1/models/{id}`) doesn't send the beta, which explains the difference.
+  - **Unconfirmed:** the old error mapping discarded Anthropic's message, so the exact cause wasn't visible.
+- **Fix** (`AnthropicProvider` / `errors.ts`):
+  1. If a request carrying the fallback beta gets a 400, retry once without it (a 400 isn't billed) and skip the beta for the rest of the service-worker session.
+  2. API errors now keep Anthropic's own status, type and message as `detail` (any key redacted, max 400 chars). It's passed through the background protocol and shown under **"Technical details"** in the fit check, the draft panel and Test key. The user-facing `message` is still our own text.
+- **Validation:**
+  - New provider tests:
+    - beta 400 → retry without it → success, and later calls skip the beta
+    - an unrelated 400 → `bad_request` with redacted detail; the key and `sk-ant-…` strings are removed
+    - Haiku is not retried
+  - State is reset per test; the suite passes when shuffled. `pnpm check` exit 0 (241 passed).
+  - Chrome scenario `e2e-t07b` (the intercepted API rejects the beta like an org without it): **14/14**. Check fit succeeded after one 400 plus a retry; a persistent 400 showed Anthropic's message in Technical details without the key.
+  - Regressions: `e2e-t07` 18/18, `e2e-t08` 16/16.
+- **Confirmed cause (user, 2026-11-08):** the Anthropic account had no credits. Anthropic reports that as a 400 ("Your credit balance is too low…").
+  - Follow-up: that 400 now maps to a new `insufficient_credits` kind with a clear message pointing to Claude Console billing.
+  - The retry-without-beta now runs only for 400s about the beta (`isFallbackBetaRejection`), not for credit or other 400s.
+  - Test added; `pnpm check` 242 passed; `e2e-t07b` 14/14.
 
-## Last validation — T07 (2026-11-08)
+## Last completed task
+- T08 — Application draft generation (2026-11-08)
+
+## Last validation — T08 (2026-11-08)
+- `pnpm check` exit 0. Vitest: 17 files passed + 2 skipped (live); 238 tests passed, 5 skipped.
+  - Sensitive classifier: 13 sensitive phrasings across all 7 categories caught; 5 normal questions not flagged.
+  - `looksFactual` heuristic.
+  - `verifyDraft`:
+    - courtesy and evidence-backed paragraphs kept; unsupported and disguised-as-courtesy claims removed
+    - answers: verified, unsupported-removed, non-factual, sensitive and unknown
+    - post instructions deduped
+  - `draftApplication`:
+    - sensitive questions are not in the prompt, and answers are remapped to the original order
+    - linked to the job, the profile version and the job hash; schema-valid; `needs_review`
+    - **prompt injection:** a fooled model's "PhD" paragraph is removed, its answer becomes unknown, the background-check question stays sensitive, and `injectionSuspected` is set
+    - **the profile is byte-identical after drafting**
+    - provider errors pass through; question cleaning; job text can't fake the questions block
+  - Edits and export: every part is editable; edited answers become `user_written`; clearing an answer reverts it; no-op edits change nothing; the text export marks unanswered questions; filename slug.
+  - Background `draft-application`: creates and stores a draft; no profile, unknown job or no key don't call the AI; **an edited draft is not overwritten without `replaceEdited`**; oversized question lists are rejected.
+- Headless Chrome 157 end-to-end (`e2e-t08`, release build; the service worker's Anthropic API calls intercepted with canned model output; **no real API call**): **16/16 passed**.
+  - Sensitive-question warning shown; the API request contained no salary question.
+  - The message kept only courtesy and evidence-backed text. Answers: tools answered, salary sensitive, unsupported degree blank; removed statements listed; post instructions shown with a caution; profile facts listed; draft stored with the job and profile version.
+  - Edit and save: the sensitive answer became `user_written`. "Copy all" put the full text on the clipboard; "Download .txt" saved the file.
+  - Drafting again was blocked until "Replace my edited draft" was confirmed, then a fresh draft was written.
+  - Injection job: warning, the fabricated PhD removed, an empty message.
+  - **The stored profile was unchanged**; 0 console errors.
+- Regressions: T03 33/33, T04 7/7, T07 18/18 (release); T06 19/19 (E2E build). Release manifest: `storage`, `activeTab`, `scripting`; no host permissions.
+- Not verified: real model output quality. The opt-in live test from T07 covers matching only; a live draft test wasn't added, to keep costs down, and could be added on request.
+
+## Validation — T07 (2026-11-08)
 - `pnpm check` exit 0. Vitest: 16 files passed + 1 skipped; 198 tests passed, 3 skipped (2 live files skipped without env vars).
   - Prompt tests: rules only in `system`; data only in the user blocks; snippet marking; job text can't close or fake data blocks.
   - Injection detector: 6 attack phrasings flagged, 3 normal phrasings not.

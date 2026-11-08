@@ -7,6 +7,7 @@ import {
   defaultTargetSite,
   DEFAULT_TARGET_SITE_URL,
   JobMatchSchema,
+  migrateDraftsV1toV2,
   JobPostingSchema,
   ProfileStateSchema,
   SearchKeywordsSchema,
@@ -128,10 +129,25 @@ describe('ApplicationDraftSchema', () => {
     jobId: 'job-1',
     profileId: 'p1',
     profileVersion: 2,
-    answers: { 'Cover letter': 'Hello' },
-    evidence: { 'Cover letter': ['5 years as a VA'] },
-    unknownQuestions: ['Expected salary?'],
+    coverLetter: 'Hello, I have 5 years as a VA.',
+    coverLetterEvidence: [{ paragraph: 'I have 5 years as a VA.', evidence: ['5 years as a VA'] }],
+    removedStatements: [],
+    answers: [
+      {
+        question: 'Expected salary?',
+        answer: '',
+        status: 'sensitive',
+        evidence: [],
+        sensitiveCategory: 'compensation',
+      },
+      { question: 'Tools you use?', answer: 'Zendesk', status: 'answered', evidence: ['Zendesk'] },
+    ],
+    postInstructions: [],
+    injectionSuspected: false,
+    editedByUser: false,
     status: 'draft',
+    jobContentHash: 'abc',
+    model: 'claude-opus-5-5',
     createdAt: '2026-11-08T00:00:00.000Z',
     updatedAt: '2026-11-08T00:00:00.000Z',
   };
@@ -139,6 +155,35 @@ describe('ApplicationDraftSchema', () => {
   it('accepts a valid draft and rejects unknown statuses', () => {
     expect(ApplicationDraftSchema.safeParse(draft).success).toBe(true);
     expect(ApplicationDraftSchema.safeParse({ ...draft, status: 'sent' }).success).toBe(false);
+  });
+
+  it('cover letter evidence entries must cite at least one quote', () => {
+    expect(
+      ApplicationDraftSchema.safeParse({
+        ...draft,
+        coverLetterEvidence: [{ paragraph: 'x', evidence: [] }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('migrates v1 drafts, keeping v1 answers as user-written text', () => {
+    const v2 = migrateDraftsV1toV2({
+      d1: {
+        id: 'd1',
+        jobId: 'j',
+        profileId: 'p',
+        profileVersion: 1,
+        answers: { 'Why us?': 'Because.' },
+        evidence: {},
+        unknownQuestions: ['Salary?'],
+        status: 'draft',
+        createdAt: draft.createdAt,
+        updatedAt: draft.updatedAt,
+      },
+    }) as Record<string, unknown>;
+    const parsed = ApplicationDraftSchema.safeParse(v2.d1);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.answers.map((a) => a.status)).toEqual(['user_written', 'unknown']);
   });
 });
 

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { AnthropicProvider } from './AnthropicProvider';
+import { AnthropicProvider, resetServerFallbackState } from './AnthropicProvider';
 
 const FAKE_KEY = 'test-key-not-real-123';
 const Schema = z.object({ score: z.number().int().min(0).max(100), reasons: z.array(z.string()) });
@@ -76,6 +76,9 @@ function provider(
 }
 
 const req = { system: 'Rate the fit.', userContent: 'job + profile', schema: Schema };
+
+// The fallback-rejected flag is module state; isolate every test.
+beforeEach(() => resetServerFallbackState());
 
 describe('AnthropicProvider.generateStructured', () => {
   it('returns schema-validated output and usage', async () => {
@@ -294,5 +297,89 @@ describe('AnthropicProvider.validateCredentials', () => {
       ok: false,
       error: { kind: 'model_unavailable' },
     });
+  });
+});
+
+describe('server-side fallback beta rejected (HTTP 400)', () => {
+  beforeEach(() => resetServerFallbackState());
+
+  const betaError = () =>
+    json(400, {
+      type: 'error',
+      error: {
+        type: 'invalid_request_error',
+        message:
+          'Unexpected value(s) `server-side-fallback-2026-07-01` for the `anthropic-beta` header.',
+      },
+      request_id: 'req_test',
+    });
+
+  it('retries once without the beta, succeeds, and skips the beta afterwards', async () => {
+    const { p, calls } = provider((call) =>
+      call.headers.get('anthropic-beta')?.includes('server-side-fallback')
+        ? betaError()
+        : message(JSON.stringify({ score: 9, reasons: [] })),
+    );
+    expect((await p.generateStructured(req)).ok).toBe(true);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.body).not.toHaveProperty('fallbacks');
+    expect(calls[1]?.headers.get('anthropic-beta') ?? '').not.toContain('server-side-fallback');
+
+    // Later requests in the same session go straight to the plain request.
+    const second = provider(() => message(JSON.stringify({ score: 1, reasons: [] })));
+    await second.p.generateStructured(req);
+    expect(second.calls).toHaveLength(1);
+    expect(second.calls[0]?.body).not.toHaveProperty('fallbacks');
+  });
+
+  it('an empty credit balance (400) is reported clearly, without a retry', async () => {
+    const { p, calls } = provider(() =>
+      json(400, {
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message:
+            'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.',
+        },
+      }),
+    );
+    const r = await p.generateStructured(req);
+    expect(calls).toHaveLength(1);
+    expect(r).toMatchObject({ ok: false, error: { kind: 'insufficient_credits' } });
+    if (!r.ok) expect(r.error.message).toMatch(/no remaining credits/);
+  });
+
+  it('a 400 unrelated to the beta still reports bad_request with redacted technical detail', async () => {
+    const { p, calls } = provider(() =>
+      json(400, {
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message: `output_config.format: schema invalid near ${FAKE_KEY} and sk-ant-abc123-XYZ`,
+        },
+        request_id: 'req_test',
+      }),
+    );
+    const r = await p.generateStructured(req);
+    expect(calls).toHaveLength(1); // not about the beta: no retry
+    expect(r).toMatchObject({ ok: false, error: { kind: 'bad_request', requestId: 'req_test' } });
+    if (r.ok) return;
+    expect(r.error.detail).toContain(
+      '400 · invalid_request_error · output_config.format: schema invalid',
+    );
+    expect(r.error.detail).not.toContain(FAKE_KEY);
+    expect(r.error.detail).not.toContain('sk-ant-abc123');
+    expect(r.error.message).not.toContain('schema invalid');
+  });
+
+  it('does not retry 400s on models without the fallback (Haiku)', async () => {
+    const { p, calls } = provider(
+      () => json(400, { type: 'error', error: { type: 'invalid_request_error', message: 'bad' } }),
+      {
+        model: 'claude-haiku-5-5',
+      },
+    );
+    await p.generateStructured(req);
+    expect(calls).toHaveLength(1);
   });
 });

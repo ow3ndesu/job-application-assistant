@@ -128,3 +128,18 @@ export function describeError(error: unknown): string {
   }
   return 'Something went wrong. Please try again.';
 }
+
+/** An error message with optional technical details (e.g. the provider's own error text). */
+export function ErrorNotice(props: { message: string; detail?: string | undefined }) {
+  return (
+    <div className="message error" role="alert" data-testid="error-notice">
+      <p>{props.message}</p>
+      {props.detail && (
+        <details>
+          <summary>Technical details</summary>
+          <pre data-testid="error-detail">{props.detail}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
