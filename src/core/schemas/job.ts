@@ -19,6 +19,12 @@ export const JobPostingSchema = z.object({
   postedAt: OptionalText,
   extractedAt: IsoDateTimeSchema,
   contentHash: z.string().min(1).max(200),
+  /** Whether `description` is a listing snippet (truncated) or the full detail-page text. */
+  descriptionSource: z.enum(['listing_snippet', 'detail_page']).optional(),
+  /** Site-specific labelled facts exactly as shown (e.g. "HOURS PER WEEK" → "30"). */
+  attributes: z
+    .record(z.string().trim().min(1).max(100), z.string().trim().min(1).max(500))
+    .optional(),
 });
 
 export type JobPosting = z.infer<typeof JobPostingSchema>;

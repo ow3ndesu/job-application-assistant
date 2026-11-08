@@ -1,10 +1,10 @@
 # Development Progress
 
 ## Current pointer
-T05 — Site adapter framework and OnlineJobs.ph discovery
+T06 — Search orchestration and results UI
 
 ## Overall status
-IN PROGRESS — T00–T04 complete. Settings, profile and the AI provider layer (key test) work; there are no job features yet.
+IN PROGRESS — T00–T05 complete. The extension can read jobs from an OnlineJobs.ph page you have open (preview only; nothing saved yet).
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
@@ -12,12 +12,42 @@ IN PROGRESS — T00–T04 complete. Settings, profile and the AI provider layer 
 - T02 — Domain models, schemas, and storage (2026-11-08)
 - T03 — Settings and profile management UI (2026-11-08)
 - T04 — AI provider abstraction and Claude integration (2026-11-08)
+- T05 — Site adapter framework and OnlineJobs.ph discovery (2026-11-08)
 
 ## Current task notes
-- T05 not started. Constraints already decided:
-  - Read-only: extract jobs only from OnlineJobs.ph pages the user has opened. No background fetching or crawling (ToS §7.4).
-  - Content scripts must not trigger AI calls. The background handler already rejects senders that aren't extension pages.
-  - Fixtures must have personal data removed.
+- T06 not started. Building blocks from T05:
+  - `captureActiveTab()` and `extractPage()` produce validated `JobPosting[]` plus a status.
+  - `mergeJobPosting` / `dedupeJobs` / `partitionNewJobs` handle duplicates.
+  - `jobs` collection repo (T02) for persistence.
+  - Under the read-only decision, a "scan" means: you open the search page (or each result page) yourself, possibly via `adapter.searchUrl(keyword)` opened in a tab, then click "Read jobs from this tab". The extension never fetches pages or follows pagination by itself.
+- T05 result:
+  - **Site inspection (live):** four public, logged-out requests on 2026-11-08, each more than 5 s apart, using a descriptive user agent: `robots.txt`, `llms.txt`, `/jobseekers`, `/jobseekers/jobsearch`, plus one job post. No more automated requests were made. Raw copies are kept only in the session scratchpad, never committed.
+    - `robots.txt`: crawl delay 5 s; disallows only `/min/` and `/jobseekers_pictures/`.
+    - `/jobseekers` **redirects to `/login` when logged out**. The public job list is `/jobseekers/jobsearch` (also listed in the site's own `llms.txt`). Search is `GET /jobseekers/jobsearch?jobkeyword=…`; pagination uses offset paths (`/jobsearch/30`).
+    - The company name is not shown to logged-out visitors, so it is never extracted (left absent).
+    - **Chrome restructures the listing markup.** The server sends each card as `<a><div.jobpost-cat-box>…<a>See More</a>…<a class=badge>…</a></div></a>`. Nested anchors are invalid, so the parser rebuilds it with `div.jobpost-cat-box` as the container. Selectors target Chrome's DOM, which is what the extension captures. happy-dom parses the raw form differently, so fixtures are **Chrome-serialized** (raw synthetic markup run through Chrome 157's parser).
+    - The real login form embeds a reCAPTCHA widget, so login detection runs before challenge detection, and a CAPTCHA widget alone never means "blocked".
+  - **Framework** (`src/sites/`):
+    - `SiteAdapter` with a pure `extract(snapshot)` that never fetches, clicks or navigates; `searchUrl()` only builds a link for the user to open.
+    - Typed `ExtractionResult` statuses map to the three categories: `no_results` (not found); `login_required` / `blocked` (could not access); `unsupported_page` / `structure_changed` (structure unsupported).
+    - Diagnostics: cards seen, skipped with reasons, duplicates, notes.
+    - The registry contains adapter exceptions (they become `structure_changed`); unknown sites become `unsupported_page`.
+  - **Capture** (`src/sites/capture.ts`):
+    - Uses `activeTab` + `scripting` (no install warnings). There are **no host permissions** in the release build.
+    - The in-page function clones the DOM and strips scripts, styles, frames, objects, `on*` handlers and `javascript:` URLs before returning HTML. It does not modify the live page.
+    - The result is Zod-validated (size limit 8M characters) and parsed with `DOMParser` (inert).
+    - Fix found in E2E: without the stripping, Chrome logged CSP violations for the page's inline handlers while parsing in the popup.
+  - **OnlineJobs adapter:**
+    - Id `onlinejobs-ph:<numericId>`; canonical source URL; "N/A"-style values are treated as absent.
+    - "DATE UPDATED" is kept in `attributes` and is not treated as a posting date.
+    - The listing snippet is marked `descriptionSource: listing_snippet`; the detail page as `detail_page`.
+    - `contentHash` is SHA-256 of the visible fields.
+  - **Schema change** (`JobPosting`): added optional `descriptionSource` and `attributes`. Backwards-compatible, so no storage migration was needed.
+  - **Popup:** "Read jobs from this tab" shows the status, the job count, a preview of up to 8 jobs, and diagnostics. It says "Jobs are not saved yet" (saving is T06).
+    - Follow-up from your testing: job titles are now links that open the job post in a new tab (https only, via `tabs.create`). "Show all N jobs" expands the list.
+    - Verified in the T05 end-to-end run, now 11/11: "Show all" lists 30 jobs, and clicking a title opens the correct job URL in a new tab.
+  - **Test-only build flag:** `E2E_HOST_ACCESS=1` adds `host_permissions: ["https://www.onlinejobs.ph/*"]`, because headless Chrome can't click the toolbar to grant `activeTab`. Release builds verified without it.
+  - Dependency added: `happy-dom` (dev only; DOM environment for Vitest).
 - T04 result:
   - `src/providers/ai/types.ts`: provider-neutral contract.
     - `AIProvider` has `validateCredentials()` and `generateStructured<T>()`.
@@ -150,6 +180,9 @@ IN PROGRESS — T00–T04 complete. Settings, profile and the AI provider layer 
   - No form filling or submission on OnlineJobs. The user applies manually using copy/export of the generated draft.
   - Reason: ToS §7.4 bans "automated means". This narrows T05 (current-page extraction only), T06 ("scan" means the user-opened page(s), not crawling) and T09 (the manual copy/export path only, for OnlineJobs).
   - Revisit only if OnlineJobs grants written permission.
+- **Default job site URL (user decision, 2026-11-08, Q3):** `https://www.onlinejobs.ph/jobseekers/jobsearch`, replacing the CLAUDE.md default `/jobseekers`, which redirects to the login page for logged-out users.
+  - Storage migration `targetSites` v1→v2 (`migrateTargetSitesV1toV2`) updates an existing default site only if it still has the old URL. Sites you edited or added are untouched, and a removed default is not re-added.
+  - 4 tests cover this; `pnpm check` exit 0 (145 passed, 3 live skipped).
 - **API credentials (user decision, 2026-11-08, Q2):** BYOK only. The user enters their own Anthropic API key, stored locally with a clear disclosure. No hosted backend for the MVP.
 
 ## Architecture review — issues identified in T00
@@ -167,13 +200,47 @@ IN PROGRESS — T00–T04 complete. Settings, profile and the AI provider layer 
 7. **`.gitignore`** is a Next.js template. Fix it in T01.
 
 ## Blockers / questions
-- None open.
+- **Unverified (needs your help):**
+  - Logged-in OnlineJobs.ph markup has not been inspected.
+  - The real "no results" page has not been observed; `no_results` currently requires "Displaying 0 out of 0".
+  - Bot-challenge detection is a generic heuristic.
+  - To verify with real pages: save the pages yourself ("Save page as… → HTML only") as `jobsearch.html` / `job-detail.html` / `login.html` in a folder, then run `OLJ_LIVE_DIR=<folder> pnpm vitest run src/sites/onlinejobs/adapter.live.test.ts`.
 - Note: `corepack enable` needs admin rights here. The dev guide (T01) should document `npm install -g pnpm` as the fallback.
 
 ## Last completed task
-- T04 — AI provider abstraction and Claude integration (2026-11-08)
+- T05 — Site adapter framework and OnlineJobs.ph discovery (2026-11-08)
 
-## Last validation — T04 (2026-11-08)
+## Last validation — T05 (2026-11-08)
+### Fixture tests (synthetic text, Chrome-serialized markup)
+- `pnpm check` exit 0. Vitest: 12 files passed + 1 skipped (live); 141 tests passed, 3 skipped (the live tests, which need `OLJ_LIVE_DIR`).
+- Adapter fixture tests:
+  - activation: https only, exact host, look-alike hosts rejected
+  - canonical URL and id
+  - listing: 3 valid jobs out of 5 cards, with 1 duplicate collapsed and 1 card without a title skipped with a reason
+  - every job passes `JobPostingSchema` and has a source URL and extraction time
+  - company and location stay absent; "N/A" pay is absent
+  - "See More" removed; `<br>` gives line breaks with browser whitespace rules
+  - detail: full description, labelled `attributes`, skills; "DATE UPDATED" is not used as `postedAt`
+  - partial detail: missing fields stay absent
+  - status cases: empty search → `no_results`; login (with reCAPTCHA widget) → `login_required`; challenge page → `blocked`; changed listing or detail markup → `structure_changed`; other page → `unsupported_page`; unknown site → `unsupported_page`; a throwing adapter is contained
+  - a CAPTCHA widget on a normal listing still gives `ok`
+  - merge: detail enriches a snippet, a snippet never overwrites the detail text, the first `extractedAt` is kept; `partitionNewJobs`
+- Capture tests: the snapshot strips scripts, styles, iframes, `on*` handlers and `javascript:` links, and leaves the live page untouched.
+### Live results (real OnlineJobs.ph pages saved 2026-11-08, Chrome-serialized; not committed)
+- `OLJ_LIVE_DIR=<scratch> pnpm vitest run src/sites/onlinejobs/adapter.live.test.ts`: **3/3 passed**.
+  - `/jobseekers/jobsearch`: 30 of 30 cards extracted, 0 skipped, 0 duplicates. 28 have pay (2 show "N/A", correctly absent); all 30 have an employment type. Page reports "30 of 276 jobs". No description contains "See More" or stray blank lines.
+  - a public job post (`/jobseekers/job/<slug>-<id>`): title, pay "$150 a week", attributes (type, wage, hours 30, date updated) and 2 skills extracted.
+  - Logged-out `/jobseekers` (login page): `login_required`.
+- **Headless Chrome 157 end-to-end** (`e2e-t05`, E2E build; www.onlinejobs.ph requests intercepted and answered with the saved raw server HTML; sub-resources blocked; **no live traffic**): **9/9 passed**.
+  - The real popup button read: the listing (30 jobs, preview of 8 + "22 more", "not saved yet"); the job post (1 job, pay shown); the login page (`login_required`); and an inaccessible tab (clear message).
+  - 0 popup console errors.
+- Regressions: T03 walkthrough 33/33 and T04 end-to-end 7/7 on the release build.
+- Release manifest: `permissions: ["storage","activeTab","scripting"]`, no `host_permissions`.
+- Not verified:
+  - Real `activeTab` grant by clicking the toolbar icon (headless can't do it). This is a quick manual check: open an OnlineJobs.ph job search page, click the extension icon, then "Read jobs from this tab".
+  - Logged-in pages.
+
+## Validation — T04 (2026-11-08)
 - `pnpm check` exit 0. Vitest: 10 files, 113 tests passed. No real API key is used: the real SDK runs against a mocked `fetch`.
   - Provider tests:
     - success, plus the documented endpoint, headers and body (`fallbacks`, `output_config.format` json_schema, effort)

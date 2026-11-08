@@ -6,3 +6,4 @@ graphify-out/
 pnpm-lock.yaml
 CLAUDE.md
 PROGRESS.md
+src/sites/onlinejobs/fixtures/*.html

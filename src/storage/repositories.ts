@@ -8,6 +8,7 @@ import {
   emptySecrets,
   JobMatchSchema,
   JobPostingSchema,
+  migrateTargetSitesV1toV2,
   ProfileStateSchema,
   SearchKeywordsSchema,
   SecretsSchema,
@@ -57,7 +58,12 @@ export function createRepositories(store: KeyValueStore, deps: RepositoryDeps = 
     ),
     targetSites: new CollectionRepository(
       store,
-      { key: STORAGE_KEYS.targetSites, version: 1, schema: TargetSiteSchema },
+      {
+        key: STORAGE_KEYS.targetSites,
+        version: 2,
+        schema: TargetSiteSchema,
+        migrations: { 1: migrateTargetSitesV1toV2 },
+      },
       clock,
       () => [defaultTargetSite(clock.now())],
     ),

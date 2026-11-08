@@ -358,3 +358,47 @@ pre {
   padding: 8px;
   border-radius: 6px;
 }
+
+.page-check {
+  margin: 12px 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.job-preview {
+  padding-left: 18px;
+  margin: 8px 0;
+}
+
+.job-preview li {
+  margin-bottom: 4px;
+}
+
+.popup {
+  width: 360px;
+}
+
+.job-preview {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.job-preview a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.job-preview a:hover,
+.job-preview a:focus-visible {
+  text-decoration: underline;
+}
+
+button.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.85rem;
+  cursor: pointer;
+}

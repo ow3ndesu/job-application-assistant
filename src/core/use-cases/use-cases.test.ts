@@ -41,7 +41,7 @@ describe('target sites', () => {
 
   it('rejects duplicates after normalization (case, trailing slash, hash)', () => {
     const r = createTargetSite(
-      { url: 'https://WWW.onlinejobs.ph/jobseekers/#top', label: '' },
+      { url: 'https://WWW.onlinejobs.ph/jobseekers/jobsearch/#top', label: '' },
       [defaultSite],
       clock,
       ids,
