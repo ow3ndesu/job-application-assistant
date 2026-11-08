@@ -55,6 +55,8 @@ export class AnthropicProvider implements AIProvider {
     this.client = new Anthropic({
       apiKey: options.apiKey,
       dangerouslyAllowBrowser: true,
+      // No SDK logging at all: logs could otherwise include request details.
+      logLevel: 'off',
       timeout: options.timeoutMs ?? ANTHROPIC_DEFAULTS.timeoutMs,
       maxRetries: options.maxRetries ?? ANTHROPIC_DEFAULTS.maxRetries,
       ...(options.fetch ? { fetch: options.fetch } : {}),

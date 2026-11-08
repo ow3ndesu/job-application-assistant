@@ -40,6 +40,33 @@ export default tseslint.config(
     },
   },
   {
+    // Untrusted text (job pages, AI output) is only ever rendered as text.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: 'Never render HTML from data. Render text instead.',
+        },
+        {
+          selector: 'AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]',
+          message: 'Never assign HTML strings. Build elements or render text.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+          message: 'Unsafe HTML insertion is not allowed.',
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='document'][callee.property.name=/^(write|writeln)$/]",
+          message: 'document.write is not allowed.',
+        },
+      ],
+    },
+  },
+  {
     // Provider/SDK code (and therefore API calls) only in the background worker.
     files: ['src/ui/**', 'src/entrypoints/**'],
     ignores: ['src/entrypoints/background.ts'],
@@ -58,7 +85,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['*.config.{js,ts}'],
+    files: ['*.config.{js,ts}', 'scripts/**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
   },
   prettier,

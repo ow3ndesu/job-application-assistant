@@ -1,10 +1,10 @@
 # Development Progress
 
 ## Current pointer
-T11 — Security, privacy, and permission review
+T12 — End-to-end testing and release preparation
 
 ## Overall status
-IN PROGRESS — T00–T10 complete. All user-facing MVP features exist: scan, keyword funnel, AI fit, evidence-checked drafts, human-approved manual applying, and approval-gated profile improvements. (`master` holds T01–T07; T08–T10 are on stacked `feat/t08…`, `feat/t09…` and `feat/t10-profile-proposals` branches.)
+IN PROGRESS — T00–T11 complete. MVP features built and security-reviewed; release preparation (T12) remains. (`master` holds T01–T07; T08–T11 are on stacked `feat/t08…` to `feat/t11-security-review` branches.)
 
 ## Completed tasks
 - T00 — Repository reconnaissance and implementation plan
@@ -18,9 +18,27 @@ IN PROGRESS — T00–T10 complete. All user-facing MVP features exist: scan, ke
 - T08 — Application draft generation (2026-11-08)
 - T09 — Human-approved application assistance (2026-11-08)
 - T10 — Profile improvement proposals (2026-11-08)
+- T11 — Security, privacy, and permission review (2026-11-08)
 
 ## Current task notes
-- T11 not started. It is a review task (permissions, key handling, data flow, prompt injection/XSS/unsafe rendering, storage validation, privacy and deletion docs, store policies, dependency hygiene). Expect mostly documentation plus fixes for whatever the audit finds.
+- T12 not started. Inputs:
+  - The headless-Chrome scripts used so far live in the session scratchpad, not the repo. Turn them into committed Playwright E2E tests covering setup, profile import, scan, match, draft, approval and cancellation.
+  - Also run them against a **development** build, so React warnings (such as duplicate keys, see T10) show up.
+  - Retire `e2e-t05`: it targets the T05 popup UI that T06 replaced, and `e2e-t06` covers the same path.
+  - Fill in the contact field in `docs/PRIVACY.md` before publishing.
+- T11 result. Full review in `docs/SECURITY.md`; privacy policy draft (with the Chrome Web Store Limited Use statement) in `docs/PRIVACY.md`. Changes:
+  - **Strict CSP** for extension pages and the service worker: `script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; connect-src 'self' https://api.anthropic.com`. Network access is limited to the extension and the Anthropic API.
+  - The Anthropic SDK is created with `logLevel: 'off'`, so the SDK never logs.
+  - ESLint forbids `dangerouslySetInnerHTML`, `innerHTML`/`outerHTML` assignment, `insertAdjacentHTML` and `document.write` in shipped code. Verified: each pattern is caught, and an unrelated `.write()` method isn't.
+  - `scripts/check-secrets.mjs` (`pnpm audit:secrets`, now the last step of `pnpm check`) scans tracked files and `.output` for Anthropic, OpenAI, AWS, GitHub and Google keys, private keys and `.env` files. Verified to fail on a planted key.
+  - Settings gains **Privacy & permissions**: what each permission is for; what is stored (unencrypted, disclosed); exactly what is sent to Anthropic per action, and only on click; deletion and key revocation.
+  - README links to both docs.
+  - Audit findings with nothing to fix:
+    - no unsafe DOM APIs, inline styles or source maps
+    - permissions are already the narrowest available (`storage`, `activeTab`, `scripting`; no host permissions)
+    - all stored and received payloads are Zod-validated
+    - background senders are checked
+    - delete controls cover every collection
 - T10 result:
   - **Rule:** only facts you supply or explicitly confirm can become proposals, and nothing is written to the profile until you review a diff and save a new version.
   - **Schema:** `ProfileProposal { section, text, phrasedBy: ai|user, sources[{kind: user_note|draft_answer|confirmed_claim, label, quote, at, ref?}] (min 1), status: pending|accepted|rejected|applied, appliedToVersion? }`. New `profileProposals` collection; "Delete profile" also clears proposals.
@@ -351,9 +369,28 @@ IN PROGRESS — T00–T10 complete. All user-facing MVP features exist: scan, ke
   - Test added; `pnpm check` 242 passed; `e2e-t07b` 14/14.
 
 ## Last completed task
-- T10 — Profile improvement proposals (2026-11-08)
+- T11 — Security, privacy, and permission review (2026-11-08)
 
-## Last validation — T10 (2026-11-08)
+## Last validation — T11 (2026-11-08)
+- `pnpm check` exit 0, including the new secret scan: 283 tests passed, 5 skipped (live); "Secret scan passed: 156 files checked (source + .output)".
+- Secret scanner: a planted fake Anthropic key in an untracked file → exit 1 with the finding; after removing it → exit 0.
+- Lint security rules, via `eslint --stdin` probes: `dangerouslySetInnerHTML`, `innerHTML =`, `insertAdjacentHTML` and `document.write` are each flagged; `o.write(1)` is not.
+- **CSP in Chrome 157** (`csp-probe`, all hosts mapped to 0.0.0.0 so there's no real traffic): **4/4**.
+  - From the options page, a fetch to another host is blocked by `connect-src`.
+  - `api.anthropic.com` is not blocked by CSP.
+  - From the service worker, a fetch to another host is blocked.
+  - An injected inline `<script>` is refused.
+- All E2E suites re-run with the CSP build: T03 33/33, T04 7/7 (includes the real Test-key call to Anthropic → 401 mapped), T07 18/18, T07b 14/14, T08 16/16, T09 17/17, T10 16/16. T06 19/19 on the E2E build. Popup and options smoke check: 0 console errors or warnings. `e2e-t05` is obsolete (its UI was replaced in T06).
+- Dependency audit:
+  - `pnpm audit --prod`: no known vulnerabilities (`@anthropic-ai/sdk` 1.6.0, `react`/`react-dom` 19.3.1, `zod` 4.6.7).
+  - `pnpm audit` (dev only): `minimatch` moderate (via ESLint) and `deepmerge` low (via `web-ext`; no patch). Accepted as dev-only and not shipped; documented in `docs/SECURITY.md` §8.
+- Release manifest: `storage`, `activeTab`, `scripting`; no host permissions; CSP present.
+- Chrome Web Store policies checked (developer.chrome.com, 2026-11-08):
+  - Limited Use requires a published affirmative statement (drafted).
+  - Permissions must be the narrowest needed (they are).
+- Process note: during this task an inline shell command with unescaped backticks briefly ran the docs files as shell scripts. Bash aborted at the first syntax error in each; checks confirmed no file was changed or created. Use the editor, not inline shell scripts with backticks, for future edits.
+
+## Validation — T10 (2026-11-08)
 - `pnpm check` exit 0. Vitest: 283 tests passed, 5 skipped (live).
   - Markdown: sections listed; bullets appended at the end of the matching section (case-insensitive) with nothing else changed; a missing section is created; duplicates skipped; empty profile handled; the diff shows only added lines.
   - Verification of AI-phrased additions: kept only when quoted from your text; rejected for an unquoted fact, a new number ("3 years" when you wrote "1 year"), a new credential ("certified"), sensitive pay info, or something already in the profile.

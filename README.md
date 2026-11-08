@@ -34,6 +34,12 @@ pnpm build          # production build → .output/chrome-mv3/
 | `pnpm test`         | Vitest unit tests                        |
 | `pnpm check`        | All of the above plus a production build |
 
+## Privacy and security
+
+- [docs/PRIVACY.md](docs/PRIVACY.md): what is stored, what is sent to Anthropic and when, deletion, Limited Use statement (draft).
+- [docs/SECURITY.md](docs/SECURITY.md): permissions, CSP, data flow, threat model, known limitations.
+- `pnpm audit:secrets` scans source and build output for keys (also part of `pnpm check`).
+
 ## Layout
 
 ```text

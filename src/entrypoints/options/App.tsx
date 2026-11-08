@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { APP_NAME } from '@/core/app-info';
 import { openJobsPage } from '@/ui/open-tab';
 import { DataSection } from './sections/DataSection';
+import { PrivacySection } from './sections/PrivacySection';
 import { KeywordsSection } from './sections/KeywordsSection';
 import { ProfileSection } from './sections/ProfileSection';
 import { ProviderSection } from './sections/ProviderSection';
@@ -15,6 +16,7 @@ const NAV = [
   ['provider', 'AI provider'],
   ['scan', 'Scan limits'],
   ['data', 'Your data'],
+  ['privacy', 'Privacy'],
 ] as const;
 
 export function App() {
@@ -50,6 +52,7 @@ export function App() {
         <ScanSection />
       </main>
       <DataSection onChanged={() => setEpoch((n) => n + 1)} />
+      <PrivacySection />
     </div>
   );
 }
